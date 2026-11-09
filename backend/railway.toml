@@ -1,0 +1,10 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @cardi/shared build && pnpm --filter @cardi/backend db:generate && pnpm --filter @cardi/backend build"
+
+[deploy]
+startCommand = "pnpm --filter @cardi/backend start:prod"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 30

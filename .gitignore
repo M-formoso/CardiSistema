@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prisma
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Uploads (datos reales del cliente)
+uploads/
+backend/uploads/
+
+# Migración — datos reales del cliente (NUNCA commitear)
+migracion/originales/*
+migracion/reportes/*
+!migracion/originales/.gitkeep
+!migracion/reportes/.gitkeep
+
+# Claude Code - preferencias locales
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

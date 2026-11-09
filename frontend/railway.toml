@@ -1,0 +1,8 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @cardi/shared build && pnpm --filter @cardi/frontend build"
+
+[deploy]
+startCommand = "pnpm --filter @cardi/frontend start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

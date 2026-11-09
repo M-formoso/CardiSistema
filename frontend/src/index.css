@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens Cardi — ver assets/brand/brand.md */
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 39% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 39% 11%;
+
+    --primary: 201 46% 49%;
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 201 51% 37%;
+    --primary-light: 201 45% 65%;
+
+    --accent: 206 59% 14%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 214 11% 47%;
+    --muted-foreground: 214 11% 47%;
+
+    --border: 214 15% 91%;
+    --input: 214 15% 91%;
+    --ring: 201 46% 49%;
+
+    --success: 160 84% 39%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Montos y fechas con tabular-nums para alinear columnas */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}

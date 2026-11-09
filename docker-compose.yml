@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cardi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cardi
+      POSTGRES_PASSWORD: cardi_dev
+      POSTGRES_DB: cardi
+      TZ: America/Argentina/Cordoba
+      PGTZ: America/Argentina/Cordoba
+    ports:
+      - '5432:5432'
+    volumes:
+      - cardi_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cardi -d cardi']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cardi_postgres_data:
+    name: cardi_postgres_data
