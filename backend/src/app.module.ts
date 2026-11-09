@@ -10,7 +10,13 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/auth/guards/permissions.guard';
+import { BeneficiariosModule } from './modules/beneficiarios/beneficiarios.module';
+import { CajasModule } from './modules/cajas/cajas.module';
+import { CategoriasModule } from './modules/categorias/categorias.module';
+import { CotizacionesModule } from './modules/cotizaciones/cotizaciones.module';
 import { HealthModule } from './modules/health/health.module';
+import { MovimientosModule } from './modules/movimientos/movimientos.module';
+import { ObrasModule } from './modules/obras/obras.module';
 
 @Module({
   imports: [
@@ -34,6 +40,12 @@ import { HealthModule } from './modules/health/health.module';
     AuditoriaModule,
     AuthModule,
     HealthModule,
+    ObrasModule,
+    CategoriasModule,
+    BeneficiariosModule,
+    CajasModule,
+    CotizacionesModule,
+    MovimientosModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

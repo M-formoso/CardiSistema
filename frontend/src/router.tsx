@@ -4,6 +4,11 @@ import { RutaProtegida } from '@/components/layout/RutaProtegida';
 import { LoginPage } from '@/pages/LoginPage';
 import { InicioPage } from '@/pages/InicioPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { ObrasPage } from '@/pages/ObrasPage';
+import { BeneficiariosPage } from '@/pages/BeneficiariosPage';
+import { CategoriasPage } from '@/pages/CategoriasPage';
+import { CajasPage } from '@/pages/CajasPage';
+import { MovimientosPage } from '@/pages/movimientos/MovimientosPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -14,18 +19,11 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <InicioPage /> },
-          {
-            path: 'movimientos',
-            element: <PlaceholderPage titulo="Movimientos" etapa="Etapa 2 (billetera)" />,
-          },
-          {
-            path: 'obras',
-            element: <PlaceholderPage titulo="Obras" etapa="Etapa 2" />,
-          },
-          {
-            path: 'beneficiarios',
-            element: <PlaceholderPage titulo="Beneficiarios" etapa="Etapa 2" />,
-          },
+          { path: 'movimientos', element: <MovimientosPage /> },
+          { path: 'obras', element: <ObrasPage /> },
+          { path: 'beneficiarios', element: <BeneficiariosPage /> },
+          { path: 'categorias', element: <CategoriasPage /> },
+          { path: 'cajas', element: <CajasPage /> },
           {
             path: 'liquidaciones',
             element: <PlaceholderPage titulo="Liquidaciones semanales" etapa="Etapa 3" />,

@@ -7,6 +7,8 @@ import {
   CalendarClock,
   FileBarChart2,
   Receipt,
+  Tag,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from './Logo';
@@ -14,8 +16,10 @@ import { Logo } from './Logo';
 const NAV = [
   { to: '/', label: 'Inicio', icon: Home, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: Wallet },
+  { to: '/cajas', label: 'Cajas', icon: Banknote },
   { to: '/obras', label: 'Obras', icon: Building2 },
   { to: '/beneficiarios', label: 'Beneficiarios', icon: Users },
+  { to: '/categorias', label: 'Categorías', icon: Tag },
   { to: '/liquidaciones', label: 'Liquidaciones', icon: Receipt },
   { to: '/compromisos', label: 'Compromisos', icon: CalendarClock },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart2 },
