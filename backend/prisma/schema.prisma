@@ -1,7 +1,11 @@
 // Prisma schema del Sistema Cardi
-// El contenido completo de modelos se genera en el paso 7 (schema.prisma inicial),
-// que se revisa con Mateo antes de aplicarse. Este archivo queda inicializado
-// con el datasource y generator para que `prisma generate` no falle.
+// Convenciones:
+// - camelCase (sin @@map), enums en MAYUSCULAS
+// - id uuid, createdAt/updatedAt en toda tabla salvo logs
+// - createdById/updatedById en toda entidad editable + AuditLog con diff
+// - Dinero: Decimal(14,2), cotización: Decimal(14,4), porcentajes: Decimal(7,4)
+// - Fechas contables: Date; timestamps: DateTime (TZ America/Argentina/Cordoba)
+// - Nunca borrar físicamente: maestros `activo: boolean`, movimientos → reversa
 
 generator client {
   provider = "prisma-client-js"
@@ -10,4 +14,885 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// =============================================================
+// ENUMS
+// =============================================================
+
+enum RolUsuario {
+  ADMIN
+  CARGA
+  CONSULTA
+}
+
+enum Moneda {
+  ARS
+  USD
+}
+
+enum TipoObra {
+  OBRA
+  UNIDAD_NEGOCIO
+  GENERAL
+}
+
+enum EstadoObra {
+  EN_LICITACION
+  ACTIVA
+  PAUSADA
+  TERMINADA
+}
+
+enum TipoBeneficiario {
+  EMPLEADO
+  CONTRATISTA
+  PROVEEDOR
+  PROFESIONAL
+  OTRO
+}
+
+enum TipoCaja {
+  EFECTIVO
+  BANCO
+  CHEQUES_TERCEROS
+  OTRO
+}
+
+enum TipoMovimiento {
+  INGRESO
+  EGRESO
+  TRANSFERENCIA
+  CAMBIO_MONEDA
+  AJUSTE
+}
+
+enum MedioPago {
+  EFECTIVO
+  TRANSFERENCIA
+  CHEQUE_PROPIO
+  CHEQUE_TERCERO
+}
+
+enum EstadoMovimiento {
+  CONFIRMADO
+  ANULADO
+  REVERSA
+}
+
+enum OrigenMovimiento {
+  MANUAL
+  LIQUIDACION
+  CERTIFICACION
+  CUOTA
+  COMPROMISO
+  MIGRACION
+}
+
+enum CotizacionTipoBlue {
+  BLUE
+  OFICIAL
+}
+
+enum CotizacionTipo {
+  BLUE_COMPRA
+  BLUE_VENTA
+  OFICIAL_COMPRA
+  OFICIAL_VENTA
+  MANUAL
+  PLANILLA
+}
+
+enum FuenteCotizacion {
+  DOLARAPI
+  AMBITO
+  ARGENTINADATOS
+  MANUAL
+}
+
+enum TipoCheque {
+  PROPIO
+  TERCERO
+}
+
+enum EstadoCheque {
+  EN_CARTERA
+  ENTREGADO
+  DEPOSITADO
+  COBRADO
+  EMITIDO
+  DEBITADO
+  RECHAZADO
+  ANULADO
+}
+
+enum EstadoLiquidacion {
+  BORRADOR
+  APROBADA
+  PAGADA
+  CERRADA
+}
+
+enum EstadoCertificacion {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  ANULADA
+}
+
+enum EstadoCuota {
+  PENDIENTE
+  PAGADA
+  ANULADA
+}
+
+enum EstadoCompromiso {
+  PENDIENTE
+  PAGADO
+  OMITIDO
+}
+
+enum EstadoMigracionLote {
+  IMPORTANDO
+  IMPORTADO
+  OBSERVADO
+  CANCELADO
+}
+
+enum EstadoMigracionFila {
+  PENDIENTE
+  MAPEADA
+  OBSERVADA
+  DUPLICADA
+  IMPORTADA
+  DESCARTADA
+}
+
+enum AuditAccion {
+  CREAR
+  ACTUALIZAR
+  ANULAR
+  REVERTIR
+  EXPORTAR
+  LOGIN
+  LOGOUT
+  OTRO
+}
+
+// =============================================================
+// BASE
+// =============================================================
+
+model Usuario {
+  id           String     @id @default(uuid())
+  nombre       String
+  email        String     @unique
+  passwordHash String
+  rol          RolUsuario
+  activo       Boolean    @default(true)
+
+  permisos      UsuarioPermiso[]
+  refreshTokens RefreshToken[]
+
+  // Auditoría de modificaciones hechas por este usuario
+  auditLogs AuditLog[] @relation("AuditLogUsuario")
+
+  // Trazabilidad en todos los modelos editables
+  obrasCreadas                Obra[]               @relation("ObraCreadaPor")
+  obrasActualizadas           Obra[]               @relation("ObraActualizadaPor")
+  beneficiariosCreados        Beneficiario[]       @relation("BeneficiarioCreadoPor")
+  beneficiariosActualizados   Beneficiario[]       @relation("BeneficiarioActualizadoPor")
+  categoriasCreadas           CategoriaGasto[]     @relation("CategoriaCreadaPor")
+  categoriasActualizadas      CategoriaGasto[]     @relation("CategoriaActualizadaPor")
+  cajasCreadas                Caja[]               @relation("CajaCreadaPor")
+  cajasActualizadas           Caja[]               @relation("CajaActualizadaPor")
+  movimientosCreados          Movimiento[]         @relation("MovCreadoPor")
+  movimientosActualizados     Movimiento[]         @relation("MovActualizadoPor")
+  movimientosAnulados         Movimiento[]         @relation("MovAnuladoPor")
+  chequesCreados              Cheque[]             @relation("ChequeCreadoPor")
+  chequesActualizados         Cheque[]             @relation("ChequeActualizadoPor")
+  liquidacionesCreadas        LiquidacionSemanal[] @relation("LiqCreadaPor")
+  liquidacionesActualizadas   LiquidacionSemanal[] @relation("LiqActualizadaPor")
+  liquidacionesCerradas       LiquidacionSemanal[] @relation("LiqCerradaPor")
+  certificacionesCreadas      Certificacion[]      @relation("CertCreadaPor")
+  certificacionesActualizadas Certificacion[]      @relation("CertActualizadaPor")
+  recibosGenerados            Recibo[]             @relation("ReciboGeneradoPor")
+  migracionLotesCreados       MigracionLote[]      @relation("LoteCreadoPor")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+/// Permisos granulares por usuario (ej. "empleados.datos_sensibles").
+/// Complementa el rol base. El rol otorga el set por defecto;
+/// esta tabla agrega excepciones explícitas.
+model UsuarioPermiso {
+  id        String  @id @default(uuid())
+  usuarioId String
+  recurso   String // ej. "empleados"
+  accion    String // ej. "datos_sensibles", "anular", "export"
+  concedido Boolean @default(true)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([usuarioId, recurso, accion])
+  @@index([usuarioId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  usuarioId String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revocado  Boolean  @default(false)
+  ip        String?
+  userAgent String?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  usuarioId   String?
+  accion      AuditAccion
+  entidad     String // ej. "Movimiento"
+  entidadId   String?
+  antes       Json?
+  despues     Json?
+  ip          String?
+  userAgent   String?
+  observacion String?
+
+  usuario Usuario? @relation("AuditLogUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([entidad, entidadId])
+  @@index([usuarioId, createdAt])
+  @@index([accion, createdAt])
+}
+
+model ConfiguracionEmpresa {
+  id             String  @id @default(uuid())
+  razonSocial    String
+  nombreFantasia String? // "Cardi"
+  cuit           String
+  domicilio      String?
+  localidad      String?
+  provincia      String?
+  telefono       String?
+  email          String?
+  logoPath       String?
+
+  // Default de cotización para movimientos
+  cotizacionTipoDefault CotizacionTipo @default(BLUE_VENTA)
+  // Día habitual de pago semanal (0=domingo, ..., 5=viernes, 6=sábado)
+  diaPagoSemanal        Int            @default(5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Obra {
+  id              String     @id @default(uuid())
+  nombre          String     @unique // tal cual lo usa Cardi
+  tipo            TipoObra
+  comitente       String?
+  constructora    String?
+  ubicacion       String?
+  fechaInicio     DateTime?  @db.Date
+  estado          EstadoObra @default(ACTIVA)
+  montoContratado Decimal?   @db.Decimal(14, 2)
+  monedaContrato  Moneda?
+  activo          Boolean    @default(true)
+
+  imputaciones    Imputacion[]
+  movimientos     Movimiento[]            @relation("MovimientoObraIngreso")
+  liquidacionDias LiquidacionDia[]
+  certificaciones Certificacion[]
+  contratosCuotas ContratoCuota[]
+  vencimientos    VencimientoRecurrente[]
+  compromisos     CompromisoPago[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("ObraCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("ObraActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo, estado])
+  @@index([activo])
+}
+
+/// Tabla única para todos a quienes se paga.
+/// 1:1 opcional con `EmpleadoLegajo` si tipo == EMPLEADO.
+model Beneficiario {
+  id            String           @id @default(uuid())
+  tipo          TipoBeneficiario
+  nombre        String // nombre o razón social
+  cuitCuil      String?
+  rubro         String?
+  contacto      String?
+  condicionPago String?
+  observaciones String?
+  activo        Boolean          @default(true)
+
+  legajo          EmpleadoLegajo?
+  aliases         BeneficiarioAlias[]
+  movimientos     Movimiento[]
+  cheques         Cheque[]
+  liquidItems     LiquidacionItem[]
+  certificaciones Certificacion[]
+  contratos       ContratoCuota[]
+  vencimientos    VencimientoRecurrente[]
+  compromisos     CompromisoPago[]
+  recibos         Recibo[]
+  vacaciones      Vacacion[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("BeneficiarioCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("BeneficiarioActualizadoPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo])
+  @@index([activo])
+  @@index([nombre])
+}
+
+model EmpleadoLegajo {
+  id             String   @id @default(uuid())
+  beneficiarioId String   @unique
+  fechaIngreso   DateTime @db.Date
+  // Puede cobrar por jornal o por semana. Al menos uno.
+  jornal         Decimal? @db.Decimal(14, 2)
+  montoSemanal   Decimal? @db.Decimal(14, 2)
+  moneda         Moneda   @default(ARS)
+  obraActualId   String?
+  observaciones  String?
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Nombres libres y apodos que aparecen en las planillas → beneficiario.
+/// Alimenta el autocompletado y la migración desde Excel.
+model BeneficiarioAlias {
+  id             String @id @default(uuid())
+  beneficiarioId String
+  alias          String
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([alias])
+  @@index([beneficiarioId])
+}
+
+model CategoriaGasto {
+  id       String  @id @default(uuid())
+  codigo   String  @unique
+  nombre   String
+  orden    Int     @default(0)
+  activo   Boolean @default(true)
+  parentId String? // si en el futuro se decide usar subcategorías
+
+  parent        CategoriaGasto?  @relation("Subcategoria", fields: [parentId], references: [id])
+  subcategorias CategoriaGasto[] @relation("Subcategoria")
+
+  movimientos  Movimiento[]
+  vencimientos VencimientoRecurrente[]
+  aliases      ConceptoAlias[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("CategoriaCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("CategoriaActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+/// Diccionario texto-origen → categoría (ej. nombre de fletero → "Fletes").
+/// Alimenta la migración y el autocompletado.
+model ConceptoAlias {
+  id          String @id @default(uuid())
+  texto       String @unique
+  categoriaId String
+
+  categoria CategoriaGasto @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([categoriaId])
+}
+
+// =============================================================
+// BILLETERA
+// =============================================================
+
+model Caja {
+  id                String   @id @default(uuid())
+  nombre            String   @unique
+  tipo              TipoCaja
+  moneda            Moneda
+  saldoInicial      Decimal  @default(0) @db.Decimal(14, 2)
+  fechaSaldoInicial DateTime @db.Date
+  activo            Boolean  @default(true)
+
+  movimientos Movimiento[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("CajaCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("CajaActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@index([tipo])
+}
+
+/// Snapshot diario de la cotización por tipo y fuente.
+/// El cron de cotizaciones hace upsert idempotente por (fecha, tipo, fuente).
+model CotizacionDolar {
+  id     String             @id @default(uuid())
+  fecha  DateTime           @db.Date
+  tipo   CotizacionTipoBlue
+  compra Decimal            @db.Decimal(14, 4)
+  venta  Decimal            @db.Decimal(14, 4)
+  fuente FuenteCotizacion
+
+  createdAt DateTime @default(now())
+
+  @@unique([fecha, tipo, fuente])
+  @@index([fecha])
+}
+
+/// Libro único de la billetera.
+/// INGRESO/EGRESO afectan la caja indicada.
+/// TRANSFERENCIA y CAMBIO_MONEDA van en PAR (misma grupoId, dos filas).
+model Movimiento {
+  id          String         @id @default(uuid())
+  tipo        TipoMovimiento
+  fecha       DateTime       @db.Date
+  cajaId      String
+  moneda      Moneda // congelada = moneda de la caja
+  monto       Decimal        @db.Decimal(14, 2) // siempre positivo; el signo lo da el tipo
+  medioPago   MedioPago
+  descripcion String?
+
+  // Cotización usada para calcular el equivalente en la otra moneda.
+  cotizacion     Decimal        @db.Decimal(14, 4) // ARS por 1 USD
+  cotizacionTipo CotizacionTipo
+  // Equivalentes congelados al momento del registro.
+  montoArs       Decimal        @db.Decimal(14, 2)
+  montoUsd       Decimal        @db.Decimal(14, 2)
+
+  beneficiarioId String?
+  categoriaId    String?
+
+  // Para INGRESO: obra opcional (etapa 2 lo profundiza).
+  obraIngresoId String?
+
+  // Vínculos opcionales con cheque y recibo
+  chequeId String?
+  reciboId String?
+
+  // Agrupa las dos patas de una transferencia/cambio, o los egresos de una liquidación/certificación.
+  grupoId String?
+
+  // Origen (manual o generado por otro módulo) + id de origen
+  origen   OrigenMovimiento @default(MANUAL)
+  origenId String?
+
+  // Estado + anulación por reversa
+  estado               EstadoMovimiento @default(CONFIRMADO)
+  anuladoAt            DateTime?
+  anuladoPorId         String?
+  motivoAnulacion      String?
+  movimientoOriginalId String? // apunta al original cuando este es la REVERSA
+
+  // Para la migración 2026: fila de origen en las planillas
+  migracionFilaId String?
+
+  // Relaciones
+  caja               Caja            @relation(fields: [cajaId], references: [id])
+  beneficiario       Beneficiario?   @relation(fields: [beneficiarioId], references: [id])
+  categoria          CategoriaGasto? @relation(fields: [categoriaId], references: [id])
+  obraIngreso        Obra?           @relation("MovimientoObraIngreso", fields: [obraIngresoId], references: [id])
+  cheque             Cheque?         @relation(fields: [chequeId], references: [id])
+  recibo             Recibo?         @relation(fields: [reciboId], references: [id])
+  movimientoOriginal Movimiento?     @relation("MovimientoReversa", fields: [movimientoOriginalId], references: [id])
+  reversas           Movimiento[]    @relation("MovimientoReversa")
+  migracionFila      MigracionFila?  @relation(fields: [migracionFilaId], references: [id])
+
+  imputaciones Imputacion[]
+
+  // Auditoría
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("MovCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("MovActualizadoPor", fields: [updatedById], references: [id])
+  anuladoPor  Usuario? @relation("MovAnuladoPor", fields: [anuladoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fecha])
+  @@index([cajaId, fecha])
+  @@index([estado])
+  @@index([tipo, estado])
+  @@index([beneficiarioId])
+  @@index([categoriaId])
+  @@index([grupoId])
+  @@index([origen, origenId])
+}
+
+/// Un movimiento puede imputarse a 1..N obras.
+/// SUM(monto) == Movimiento.monto (validado en service + packages/shared).
+model Imputacion {
+  id           String  @id @default(uuid())
+  movimientoId String
+  obraId       String
+  monto        Decimal @db.Decimal(14, 2)
+  porcentaje   Decimal @db.Decimal(7, 4)
+
+  movimiento Movimiento @relation(fields: [movimientoId], references: [id], onDelete: Cascade)
+  obra       Obra       @relation(fields: [obraId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([movimientoId, obraId])
+  @@index([obraId])
+}
+
+model Cheque {
+  id             String       @id @default(uuid())
+  tipo           TipoCheque
+  numero         String
+  banco          String?
+  sucursal       String?
+  librador       String? // para cheques de tercero
+  titular        String? // alternativa a librador
+  cuit           String?
+  monto          Decimal      @db.Decimal(14, 2)
+  moneda         Moneda       @default(ARS)
+  fechaEmision   DateTime     @db.Date
+  fechaPago      DateTime     @db.Date
+  estado         EstadoCheque @default(EN_CARTERA)
+  beneficiarioId String?
+  observaciones  String?
+  // Fotos / imágenes del cheque
+  imagenesPaths  String[]     @default([])
+
+  beneficiario Beneficiario? @relation(fields: [beneficiarioId], references: [id])
+  movimientos  Movimiento[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("ChequeCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("ChequeActualizadoPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tipo, numero, banco]) // mismo nro puede repetirse entre bancos
+  @@index([estado])
+  @@index([fechaPago])
+  @@index([beneficiarioId])
+}
+
+// =============================================================
+// PERSONAS Y COMPROMISOS
+// =============================================================
+
+model LiquidacionSemanal {
+  id              String            @id @default(uuid())
+  semanaInicio    DateTime          @db.Date
+  semanaFin       DateTime          @db.Date
+  estado          EstadoLiquidacion @default(BORRADOR)
+  totalBruto      Decimal           @default(0) @db.Decimal(14, 2)
+  totalDescuentos Decimal           @default(0) @db.Decimal(14, 2)
+  totalPagado     Decimal           @default(0) @db.Decimal(14, 2)
+  observaciones   String?
+
+  items LiquidacionItem[]
+
+  cerradaAt    DateTime?
+  cerradaPorId String?
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("LiqCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("LiqActualizadaPor", fields: [updatedById], references: [id])
+  cerradaPor  Usuario? @relation("LiqCerradaPor", fields: [cerradaPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([semanaInicio, semanaFin])
+  @@index([estado])
+}
+
+model LiquidacionItem {
+  id             String    @id @default(uuid())
+  liquidacionId  String
+  beneficiarioId String? // null si solo matcheamos por nombreLibre durante la migración
+  nombreLibre    String // nombre tal como aparece en la planilla original
+  diasTrabajados Decimal   @default(0) @db.Decimal(6, 2)
+  valorDia       Decimal   @default(0) @db.Decimal(14, 2)
+  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
+  descuentos     Decimal   @default(0) @db.Decimal(14, 2)
+  aPagar         Decimal   @default(0) @db.Decimal(14, 2)
+  pagado         Boolean   @default(false)
+  fechaPago      DateTime? @db.Date
+  observaciones  String?
+
+  liquidacion  LiquidacionSemanal @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  beneficiario Beneficiario?      @relation(fields: [beneficiarioId], references: [id])
+
+  dias LiquidacionDia[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([liquidacionId])
+  @@index([beneficiarioId])
+}
+
+/// Un día de trabajo del empleado dentro de una liquidación, asociado a una obra.
+/// Permite repartir el pago semanal proporcionalmente por obra.
+model LiquidacionDia {
+  id       String   @id @default(uuid())
+  itemId   String
+  fecha    DateTime @db.Date
+  dias     Decimal  @default(1) @db.Decimal(4, 2) // 1 = día completo, 0.5 = medio día
+  obraId   String
+  etiqueta String? // "lluvia", "ausente", etc.
+
+  item LiquidacionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  obra Obra            @relation(fields: [obraId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([itemId, fecha])
+  @@index([obraId, fecha])
+}
+
+model Vacacion {
+  id             String    @id @default(uuid())
+  beneficiarioId String
+  desde          DateTime  @db.Date
+  hasta          DateTime  @db.Date
+  dias           Int
+  fechaPago      DateTime? @db.Date
+  movimientoId   String?
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([beneficiarioId])
+}
+
+model Certificacion {
+  id               String              @id @default(uuid())
+  beneficiarioId   String // contratista
+  obraId           String
+  numero           String? // número correlativo si el contratista lo usa
+  fecha            DateTime            @db.Date
+  descripcion      String?
+  monto            Decimal             @db.Decimal(14, 2)
+  moneda           Moneda
+  porcentajeAvance Decimal?            @db.Decimal(7, 4)
+  adjuntoPath      String?
+  estado           EstadoCertificacion @default(PENDIENTE)
+  saldoPendiente   Decimal             @db.Decimal(14, 2)
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id])
+  obra         Obra         @relation(fields: [obraId], references: [id])
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("CertCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("CertActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([obraId])
+  @@index([beneficiarioId])
+  @@index([estado])
+}
+
+model ContratoCuota {
+  id             String  @id @default(uuid())
+  beneficiarioId String // profesional
+  obraId         String?
+  concepto       String
+  montoTotal     Decimal @db.Decimal(14, 2)
+  moneda         Moneda
+  cantidadCuotas Int
+  observaciones  String?
+  activo         Boolean @default(true)
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id])
+  obra         Obra?        @relation(fields: [obraId], references: [id])
+
+  cuotas Cuota[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([beneficiarioId])
+  @@index([obraId])
+}
+
+model Cuota {
+  id           String      @id @default(uuid())
+  contratoId   String
+  numero       Int
+  monto        Decimal     @db.Decimal(14, 2)
+  vencimiento  DateTime    @db.Date
+  estado       EstadoCuota @default(PENDIENTE)
+  movimientoId String?
+
+  contrato ContratoCuota @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contratoId, numero])
+  @@index([estado])
+  @@index([vencimiento])
+}
+
+model VencimientoRecurrente {
+  id             String  @id @default(uuid())
+  concepto       String
+  obraId         String?
+  categoriaId    String?
+  beneficiarioId String?
+  diaDelMes      Int
+  montoEstimado  Decimal @db.Decimal(14, 2)
+  moneda         Moneda  @default(ARS)
+  cajaHabitualId String?
+  activo         Boolean @default(true)
+
+  obra         Obra?           @relation(fields: [obraId], references: [id])
+  categoria    CategoriaGasto? @relation(fields: [categoriaId], references: [id])
+  beneficiario Beneficiario?   @relation(fields: [beneficiarioId], references: [id])
+
+  compromisos CompromisoPago[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+model CompromisoPago {
+  id             String           @id @default(uuid())
+  vencimientoId  String?
+  fecha          DateTime         @db.Date
+  concepto       String
+  obraId         String?
+  beneficiarioId String?
+  montoEstimado  Decimal          @db.Decimal(14, 2)
+  moneda         Moneda           @default(ARS)
+  estado         EstadoCompromiso @default(PENDIENTE)
+  movimientoId   String?
+
+  vencimiento  VencimientoRecurrente? @relation(fields: [vencimientoId], references: [id])
+  obra         Obra?                  @relation(fields: [obraId], references: [id])
+  beneficiario Beneficiario?          @relation(fields: [beneficiarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fecha])
+  @@index([estado])
+}
+
+model Recibo {
+  id             String   @id @default(uuid())
+  numero         Int      @unique @default(autoincrement())
+  fecha          DateTime @db.Date
+  beneficiarioId String?
+  monto          Decimal  @db.Decimal(14, 2)
+  moneda         Moneda
+  concepto       String
+  pdfPath        String?
+  generadoPorId  String?
+
+  beneficiario Beneficiario? @relation(fields: [beneficiarioId], references: [id])
+  generadoPor  Usuario?      @relation("ReciboGeneradoPor", fields: [generadoPorId], references: [id])
+
+  movimientos Movimiento[]
+
+  createdAt DateTime @default(now())
+
+  @@index([fecha])
+  @@index([beneficiarioId])
+}
+
+// =============================================================
+// MIGRACIÓN 2026
+// =============================================================
+
+model MigracionLote {
+  id          String              @id @default(uuid())
+  archivo     String
+  hoja        String?
+  descripcion String?
+  estado      EstadoMigracionLote @default(IMPORTANDO)
+
+  filas MigracionFila[]
+
+  createdById String?
+  createdBy   Usuario? @relation("LoteCreadoPor", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+}
+
+model MigracionFila {
+  id          String              @id @default(uuid())
+  loteId      String
+  fila        Int // número de fila original en el Excel
+  datos       Json // dato crudo tal cual venía
+  estado      EstadoMigracionFila @default(PENDIENTE)
+  observacion String?
+
+  lote        MigracionLote @relation(fields: [loteId], references: [id], onDelete: Cascade)
+  movimientos Movimiento[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([loteId, fila])
+  @@index([estado])
 }

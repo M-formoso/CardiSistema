@@ -1,15 +1,23 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { RouterProvider } from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { router } from './router';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
+
 export function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="max-w-md text-center">
-        <h1 className="text-4xl font-bold text-primary mb-2">Cardi</h1>
-        <p className="text-muted">
-          Sistema de gestión de gastos por obra.
-        </p>
-        <p className="text-sm text-muted mt-6">
-          Etapa 0 · esqueleto inicial. El layout real se arma en el paso siguiente.
-        </p>
-      </div>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+      <Toaster richColors position="top-right" closeButton />
+    </QueryClientProvider>
   );
 }
