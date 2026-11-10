@@ -1,6 +1,6 @@
 [build]
 builder = "RAILPACK"
-buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @cardi/shared build && pnpm --filter @cardi/frontend build"
+buildCommand = "corepack enable && corepack prepare pnpm@10.22.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @cardi/shared build && pnpm --filter @cardi/frontend build"
 
 [deploy]
 startCommand = "pnpm --filter @cardi/frontend start"
