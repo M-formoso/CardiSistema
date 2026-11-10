@@ -14,4 +14,11 @@ export default defineConfig({
     port: 5173,
     host: true,
   },
+  preview: {
+    port: Number(process.env.PORT) || 4173,
+    host: true,
+    // Railway sirve detrás de un proxy en *.up.railway.app — hay que permitir
+    // esos hosts o vite-preview responde 403 "Blocked request".
+    allowedHosts: ['.up.railway.app', '.railway.app'],
+  },
 });
