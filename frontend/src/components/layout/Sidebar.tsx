@@ -9,6 +9,9 @@ import {
   Receipt,
   Tag,
   Banknote,
+  FileCheck2,
+  FileText,
+  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from './Logo';
@@ -16,11 +19,14 @@ import { Logo } from './Logo';
 const NAV = [
   { to: '/', label: 'Inicio', icon: Home, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: Wallet },
+  { to: '/cheques', label: 'Cheques', icon: ScrollText },
   { to: '/cajas', label: 'Cajas', icon: Banknote },
   { to: '/obras', label: 'Obras', icon: Building2 },
   { to: '/beneficiarios', label: 'Beneficiarios', icon: Users },
   { to: '/categorias', label: 'Categorías', icon: Tag },
   { to: '/liquidaciones', label: 'Liquidaciones', icon: Receipt },
+  { to: '/certificaciones', label: 'Certificaciones', icon: FileCheck2 },
+  { to: '/contratos', label: 'Contratos cuotas', icon: FileText },
   { to: '/compromisos', label: 'Compromisos', icon: CalendarClock },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart2 },
 ];

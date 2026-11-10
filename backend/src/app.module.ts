@@ -13,10 +13,17 @@ import { PermissionsGuard } from './modules/auth/guards/permissions.guard';
 import { BeneficiariosModule } from './modules/beneficiarios/beneficiarios.module';
 import { CajasModule } from './modules/cajas/cajas.module';
 import { CategoriasModule } from './modules/categorias/categorias.module';
+import { CertificacionesModule } from './modules/certificaciones/certificaciones.module';
+import { ChequesModule } from './modules/cheques/cheques.module';
+import { CompromisosModule } from './modules/compromisos/compromisos.module';
+import { ContratosCuotasModule } from './modules/contratos-cuotas/contratos-cuotas.module';
 import { CotizacionesModule } from './modules/cotizaciones/cotizaciones.module';
 import { HealthModule } from './modules/health/health.module';
+import { LiquidacionesModule } from './modules/liquidaciones/liquidaciones.module';
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
 import { ObrasModule } from './modules/obras/obras.module';
+import { RecibosModule } from './modules/recibos/recibos.module';
+import { ReportesModule } from './modules/reportes/reportes.module';
 
 @Module({
   imports: [
@@ -40,12 +47,23 @@ import { ObrasModule } from './modules/obras/obras.module';
     AuditoriaModule,
     AuthModule,
     HealthModule,
+    // Maestros
     ObrasModule,
     CategoriasModule,
     BeneficiariosModule,
     CajasModule,
+    // Billetera
     CotizacionesModule,
+    ChequesModule,
     MovimientosModule,
+    // Personas y compromisos
+    LiquidacionesModule,
+    RecibosModule,
+    CertificacionesModule,
+    ContratosCuotasModule,
+    CompromisosModule,
+    // Reportes
+    ReportesModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
