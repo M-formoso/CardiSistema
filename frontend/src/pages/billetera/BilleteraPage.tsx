@@ -178,7 +178,7 @@ export function BilleteraPage() {
     <div className="-m-6">
       {/* ==================== HERO ==================== */}
       <div
-        className="relative bg-accent text-white px-6 pt-6 pb-8"
+        className="relative bg-accent text-white px-8 lg:px-12 pt-6 pb-8"
         style={{
           backgroundImage:
             'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
@@ -313,7 +313,7 @@ export function BilleteraPage() {
       </div>
 
       {/* ==================== BODY ==================== */}
-      <div className="p-6 space-y-6">
+      <div className="px-8 lg:px-12 py-6 space-y-6">
         {/* Saldos por caja */}
         <div>
           <h2 className="text-sm font-semibold text-muted mb-2 uppercase tracking-wider">
