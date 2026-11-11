@@ -12,8 +12,11 @@ export const CreateEmpleadoSchema = z.object({
   dni: z.string().max(20).optional(),
   cuitCuil: z.string().max(20).optional(),
   empresaId: z.string().uuid().optional(),
+  categoriaId: z.string().uuid().optional(),
   situacionFiscal: z.nativeEnum(SituacionFiscal).default(SituacionFiscal.NEGRO),
   fechaIngreso: z.coerce.date(),
+  // Si viene categoriaId pero no jornal/valorHoraExtra, se heredan de la categoría.
+  // Si viene jornal explícito, prevalece sobre el de la categoría.
   jornal: z.coerce.number().min(0).optional(),
   valorHoraExtra: z.coerce.number().min(0).optional(),
   obraActualId: z.string().uuid().optional(),
@@ -29,6 +32,7 @@ export const UpdateEmpleadoSchema = z.object({
   dni: z.string().max(20).nullable().optional(),
   cuitCuil: z.string().max(20).nullable().optional(),
   empresaId: z.string().uuid().nullable().optional(),
+  categoriaId: z.string().uuid().nullable().optional(),
   situacionFiscal: z.nativeEnum(SituacionFiscal).optional(),
   fechaIngreso: z.coerce.date().optional(),
   obraActualId: z.string().uuid().nullable().optional(),
@@ -50,6 +54,7 @@ export class ActualizarJornalDto extends createZodDto(ActualizarJornalSchema) {}
 export const FiltrosEmpleadoSchema = z.object({
   activo: z.coerce.boolean().optional(),
   empresaId: z.string().uuid().optional(),
+  categoriaId: z.string().uuid().optional(),
   obraId: z.string().uuid().optional(),
   situacionFiscal: z.nativeEnum(SituacionFiscal).optional(),
   q: z.string().optional(),

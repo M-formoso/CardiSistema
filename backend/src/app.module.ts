@@ -13,6 +13,7 @@ import { PermissionsGuard } from './modules/auth/guards/permissions.guard';
 import { BeneficiariosModule } from './modules/beneficiarios/beneficiarios.module';
 import { CajasModule } from './modules/cajas/cajas.module';
 import { CategoriasModule } from './modules/categorias/categorias.module';
+import { CategoriasEmpleadosModule } from './modules/categorias-empleados/categorias-empleados.module';
 import { CertificacionesModule } from './modules/certificaciones/certificaciones.module';
 import { ChequesModule } from './modules/cheques/cheques.module';
 import { CompromisosModule } from './modules/compromisos/compromisos.module';
@@ -56,6 +57,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     CategoriasModule,
     BeneficiariosModule,
     EmpresasModule,
+    CategoriasEmpleadosModule,
     EmpleadosModule,
     CajasModule,
     // Billetera

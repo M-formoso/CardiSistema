@@ -36,6 +36,7 @@ export class EmpleadosService {
     }
     const legajoFilter: Prisma.EmpleadoLegajoWhereInput = {};
     if (filtros.empresaId) legajoFilter.empresaId = filtros.empresaId;
+    if (filtros.categoriaId) legajoFilter.categoriaId = filtros.categoriaId;
     if (filtros.obraId) legajoFilter.obraActualId = filtros.obraId;
     if (filtros.situacionFiscal) legajoFilter.situacionFiscal = filtros.situacionFiscal;
     if (Object.keys(legajoFilter).length > 0) {
@@ -51,9 +52,10 @@ export class EmpleadosService {
           ? {
               include: {
                 empresa: { select: { id: true, nombre: true } },
+                categoria: { select: { id: true, codigo: true, nombre: true } },
               },
             }
-          : { select: { situacionFiscal: true, empresaId: true, obraActualId: true } },
+          : { select: { situacionFiscal: true, empresaId: true, categoriaId: true, obraActualId: true } },
       },
     });
   }
@@ -67,12 +69,13 @@ export class EmpleadosService {
           ? {
               include: {
                 empresa: { select: { id: true, nombre: true } },
+                categoria: { select: { id: true, codigo: true, nombre: true, jornal: true } },
                 historialJornales: {
                   orderBy: { vigenteDesde: 'desc' },
                 },
               },
             }
-          : { select: { situacionFiscal: true, empresaId: true, obraActualId: true } },
+          : { select: { situacionFiscal: true, empresaId: true, categoriaId: true, obraActualId: true } },
         aliases: true,
       },
     });
@@ -112,9 +115,26 @@ export class EmpleadosService {
 
   async create(dto: CreateEmpleadoDto, userId: string) {
     const hoy = new Date();
-    const jornalDecimal = dto.jornal != null ? new Prisma.Decimal(dto.jornal.toFixed(2)) : null;
-    const valorHoraExtraDecimal =
+
+    // Si se asigna una categoría y no viene jornal propio, se hereda.
+    let jornalDecimal = dto.jornal != null ? new Prisma.Decimal(dto.jornal.toFixed(2)) : null;
+    let valorHoraExtraDecimal =
       dto.valorHoraExtra != null ? new Prisma.Decimal(dto.valorHoraExtra.toFixed(2)) : null;
+    let jornalMotivo = 'Jornal inicial';
+
+    if (dto.categoriaId && (jornalDecimal == null || valorHoraExtraDecimal == null)) {
+      const cat = await this.prisma.categoriaEmpleado.findUnique({
+        where: { id: dto.categoriaId },
+      });
+      if (!cat) throw new NotFoundException('Categoría no encontrada');
+      if (jornalDecimal == null && cat.jornal) {
+        jornalDecimal = new Prisma.Decimal(cat.jornal);
+        jornalMotivo = `Heredado de categoría "${cat.nombre}"`;
+      }
+      if (valorHoraExtraDecimal == null && cat.valorHoraExtra) {
+        valorHoraExtraDecimal = new Prisma.Decimal(cat.valorHoraExtra);
+      }
+    }
 
     const creado = await this.prisma.$transaction(async (tx) => {
       const beneficiario = await tx.beneficiario.create({
@@ -131,6 +151,7 @@ export class EmpleadosService {
               fechaIngreso: dto.fechaIngreso,
               dni: dto.dni?.trim() || null,
               empresaId: dto.empresaId ?? null,
+              categoriaId: dto.categoriaId ?? null,
               situacionFiscal: dto.situacionFiscal,
               jornal: jornalDecimal,
               valorHoraExtra: valorHoraExtraDecimal,
@@ -152,7 +173,7 @@ export class EmpleadosService {
             jornal: jornalDecimal,
             valorHoraExtra: valorHoraExtraDecimal,
             vigenteDesde: hoy,
-            motivo: 'Jornal inicial',
+            motivo: jornalMotivo,
             createdById: userId,
           },
         });
@@ -199,6 +220,7 @@ export class EmpleadosService {
       if (
         dto.dni !== undefined ||
         dto.empresaId !== undefined ||
+        dto.categoriaId !== undefined ||
         dto.situacionFiscal !== undefined ||
         dto.fechaIngreso !== undefined ||
         dto.obraActualId !== undefined
@@ -208,6 +230,7 @@ export class EmpleadosService {
           data: {
             dni: dto.dni !== undefined ? dto.dni?.trim() || null : undefined,
             empresaId: dto.empresaId !== undefined ? dto.empresaId : undefined,
+            categoriaId: dto.categoriaId !== undefined ? dto.categoriaId : undefined,
             situacionFiscal: dto.situacionFiscal,
             fechaIngreso: dto.fechaIngreso,
             obraActualId: dto.obraActualId !== undefined ? dto.obraActualId : undefined,

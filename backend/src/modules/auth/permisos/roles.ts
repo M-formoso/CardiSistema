@@ -17,6 +17,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     'beneficiarios:ver', 'beneficiarios:crear', 'beneficiarios:editar',
     'empresas:ver', 'empresas:crear', 'empresas:editar',
     'empleados:ver', 'empleados:crear', 'empleados:editar',
+    'categorias_empleados:ver', 'categorias_empleados:crear', 'categorias_empleados:editar',
     'categorias:ver', 'categorias:crear', 'categorias:editar',
     'cajas:ver',
 
@@ -42,6 +43,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     'beneficiarios:ver',
     'empresas:ver',
     'empleados:ver',
+    'categorias_empleados:ver',
     'categorias:ver',
     'cajas:ver',
     'cotizaciones:ver',

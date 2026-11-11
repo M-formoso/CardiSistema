@@ -7,6 +7,7 @@ import {
   Moneda,
   OrigenMovimiento,
   Prisma,
+  TipoConceptoLiquidacion,
   TipoMovimiento,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -16,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CotizacionesService } from '../cotizaciones/cotizaciones.service';
 import type {
+  ConceptoInput,
   CreateLiquidacionDto,
   FiltrosLiquidacionDto,
   PagarLiquidacionDto,
@@ -23,12 +25,26 @@ import type {
 } from './dto/liquidaciones.dto';
 
 /**
- * Liquidaciones semanales v2.
- * - Una liquidación por obra y semana. Los días son un número, no por día.
- * - Items soportan hs. extras y aplicación de préstamos pendientes del empleado.
- * - El pago puede ser total o parcial (LiquidacionPago). Cada pago genera un
- *   Movimiento imputado 100% a la obra de la liquidación.
+ * Signo lógico de cada tipo de concepto en el total del recibo.
+ * - Positivo: suma al subtotal.
+ * - Negativo: resta.
+ * - Cero: informativo (NOTA_SALDO), no se cuenta.
  */
+const SIGNO_POR_TIPO: Record<TipoConceptoLiquidacion, 1 | -1 | 0> = {
+  JORNAL: 1,
+  JORNAL_ESPECIAL: 1,
+  HORAS_EXTRA: 1,
+  VIATICO: 1,
+  VACACIONES: 1,
+  CERTIFICACION: 1,
+  SUELDO: 1,
+  PRESTAMO_ENTREGADO: 1, // suma al total que se entrega (nace el préstamo)
+  PRESTAMO_APLICACION: -1, // descuento del total (reduce saldo de préstamo existente)
+  DEDUCCION: -1,
+  VALE: -1,
+  NOTA_SALDO: 0,
+};
+
 @Injectable()
 export class LiquidacionesService {
   constructor(
@@ -62,10 +78,12 @@ export class LiquidacionesService {
         items: {
           include: {
             beneficiario: { select: { id: true, nombre: true, tipo: true } },
-            aplicacionesPrestamo: {
+            conceptos: {
               include: {
+                obra: { select: { id: true, nombre: true } },
                 prestamo: { select: { id: true, fecha: true, monto: true, saldoPendiente: true } },
               },
+              orderBy: { orden: 'asc' },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -118,102 +136,125 @@ export class LiquidacionesService {
       throw new BadRequestException('Solo se pueden editar liquidaciones en BORRADOR');
     }
 
-    const dias = Number(dto.diasTrabajados);
-    const horasExtras = Number(dto.horasExtras ?? 0);
-    const valorDia = Number(dto.valorDia);
-    const valorHoraExtra = Number(dto.valorHoraExtra ?? 0);
-    const descuentos = Number(dto.descuentos ?? 0);
-
-    if (dias === 0 && horasExtras === 0) {
-      throw new BadRequestException('El item debe tener días u horas extra');
-    }
-
-    const subtotal = dias * valorDia + horasExtras * valorHoraExtra;
-
-    const prestamosAplicar = dto.prestamosAplicar ?? [];
-    const prestamosAplicados = prestamosAplicar.reduce((acc, p) => acc + Number(p.monto), 0);
-
-    const aPagar = Math.max(0, subtotal - descuentos - prestamosAplicados);
+    // Validación básica de conceptos
+    this.validarConceptos(dto.conceptos, dto.beneficiarioId);
 
     return this.prisma.$transaction(async (tx) => {
-      // Si es update, revierto aplicaciones previas (suma los montos de vuelta a los préstamos)
+      // Si es update, revertir efectos de conceptos previos (aplicaciones y entregas de préstamo)
       if (dto.id) {
-        await this.revertirAplicacionesItem(tx, dto.id);
+        await this.revertirEfectosDeConceptos(tx, dto.id);
       }
 
-      // Valido cada préstamo: existe, pertenece al beneficiario, monto <= saldoPendiente
-      if (prestamosAplicar.length > 0) {
-        if (!dto.beneficiarioId) {
-          throw new BadRequestException('Para aplicar préstamos, el item debe tener beneficiario');
-        }
-        for (const ap of prestamosAplicar) {
-          const prestamo = await tx.prestamoEmpleado.findUnique({ where: { id: ap.prestamoId } });
-          if (!prestamo) {
-            throw new BadRequestException(`Préstamo ${ap.prestamoId} no encontrado`);
-          }
-          if (prestamo.beneficiarioId !== dto.beneficiarioId) {
-            throw new BadRequestException('El préstamo no pertenece al empleado del item');
-          }
-          if (prestamo.estado === EstadoPrestamoEmpleado.ANULADO) {
-            throw new BadRequestException('No se puede aplicar un préstamo anulado');
-          }
-          if (Number(prestamo.saldoPendiente) < Number(ap.monto)) {
-            throw new BadRequestException(
-              `Monto a aplicar ($${ap.monto}) supera el saldo pendiente ($${prestamo.saldoPendiente}) del préstamo`,
-            );
-          }
-        }
-      }
-
-      const data: Prisma.LiquidacionItemUncheckedCreateInput = {
+      // Crear o actualizar el item (subtotal/aPagar provisorios, se recalculan abajo)
+      const itemData: Prisma.LiquidacionItemUncheckedCreateInput = {
         liquidacionId,
         beneficiarioId: dto.beneficiarioId ?? null,
         nombreLibre: dto.nombreLibre.trim(),
-        diasTrabajados: new Prisma.Decimal(dias.toFixed(2)),
-        valorDia: new Prisma.Decimal(valorDia.toFixed(2)),
-        horasExtras: new Prisma.Decimal(horasExtras.toFixed(2)),
-        valorHoraExtra: new Prisma.Decimal(valorHoraExtra.toFixed(2)),
-        subtotal: new Prisma.Decimal(subtotal.toFixed(2)),
-        descuentos: new Prisma.Decimal(descuentos.toFixed(2)),
-        prestamosAplicados: new Prisma.Decimal(prestamosAplicados.toFixed(2)),
-        aPagar: new Prisma.Decimal(aPagar.toFixed(2)),
+        subtotal: new Prisma.Decimal(0),
+        aPagar: new Prisma.Decimal(0),
         observaciones: dto.observaciones,
       };
 
       const item = dto.id
-        ? await tx.liquidacionItem.update({ where: { id: dto.id }, data })
-        : await tx.liquidacionItem.create({ data });
+        ? await tx.liquidacionItem.update({ where: { id: dto.id }, data: itemData })
+        : await tx.liquidacionItem.create({ data: itemData });
 
-      // Aplico los préstamos nuevos
-      for (const ap of prestamosAplicar) {
-        await tx.prestamoAplicacion.create({
-          data: {
-            prestamoId: ap.prestamoId,
-            liquidacionItemId: item.id,
-            monto: new Prisma.Decimal(Number(ap.monto).toFixed(2)),
-          },
-        });
-        const prestamo = await tx.prestamoEmpleado.findUnique({
-          where: { id: ap.prestamoId },
-          select: { saldoPendiente: true },
-        });
-        const nuevoSaldo = new Prisma.Decimal(prestamo!.saldoPendiente).minus(
-          new Prisma.Decimal(Number(ap.monto).toFixed(2)),
-        );
-        await tx.prestamoEmpleado.update({
-          where: { id: ap.prestamoId },
-          data: {
-            saldoPendiente: nuevoSaldo,
-            estado: nuevoSaldo.lte(0)
-              ? EstadoPrestamoEmpleado.SALDADO
-              : EstadoPrestamoEmpleado.VIGENTE,
-            updatedById: userId,
-          },
-        });
+      // Borrar conceptos y aplicaciones viejas (si era update)
+      if (dto.id) {
+        await tx.liquidacionItemConcepto.deleteMany({ where: { liquidacionItemId: item.id } });
+        await tx.prestamoAplicacion.deleteMany({ where: { liquidacionItemId: item.id } });
       }
 
+      // Aplicar cada concepto: validar préstamos, crear nuevos si corresponde, crear el concepto
+      let subtotal = new Prisma.Decimal(0);
+      let ordenCursor = 0;
+      for (const c of dto.conceptos) {
+        const signo = SIGNO_POR_TIPO[c.tipo];
+        const montoBruto = new Prisma.Decimal(Math.abs(c.monto).toFixed(2));
+        const montoSignado = signo === -1 ? montoBruto.neg() : signo === 1 ? montoBruto : new Prisma.Decimal(0);
+
+        let prestamoId = c.prestamoId ?? null;
+
+        if (c.tipo === TipoConceptoLiquidacion.PRESTAMO_APLICACION) {
+          if (!prestamoId) throw new BadRequestException('PRESTAMO_APLICACION requiere prestamoId');
+          const prestamo = await tx.prestamoEmpleado.findUnique({ where: { id: prestamoId } });
+          if (!prestamo) throw new BadRequestException(`Préstamo ${prestamoId} no encontrado`);
+          if (prestamo.beneficiarioId !== dto.beneficiarioId) {
+            throw new BadRequestException('El préstamo no pertenece al empleado');
+          }
+          if (prestamo.estado === EstadoPrestamoEmpleado.ANULADO) {
+            throw new BadRequestException('No se puede aplicar un préstamo anulado');
+          }
+          if (new Prisma.Decimal(prestamo.saldoPendiente).lt(montoBruto)) {
+            throw new BadRequestException(
+              `Monto a aplicar ($${montoBruto.toFixed(2)}) supera el saldo pendiente ($${prestamo.saldoPendiente}) del préstamo`,
+            );
+          }
+          await tx.prestamoAplicacion.create({
+            data: { prestamoId, liquidacionItemId: item.id, monto: montoBruto },
+          });
+          const nuevoSaldo = new Prisma.Decimal(prestamo.saldoPendiente).minus(montoBruto);
+          await tx.prestamoEmpleado.update({
+            where: { id: prestamoId },
+            data: {
+              saldoPendiente: nuevoSaldo,
+              estado: nuevoSaldo.lte(0)
+                ? EstadoPrestamoEmpleado.SALDADO
+                : EstadoPrestamoEmpleado.VIGENTE,
+              updatedById: userId,
+            },
+          });
+        }
+
+        if (c.tipo === TipoConceptoLiquidacion.PRESTAMO_ENTREGADO) {
+          if (!dto.beneficiarioId) {
+            throw new BadRequestException('PRESTAMO_ENTREGADO requiere beneficiario');
+          }
+          const nuevoPrestamo = await tx.prestamoEmpleado.create({
+            data: {
+              beneficiarioId: dto.beneficiarioId,
+              fecha: new Date(),
+              monto: montoBruto,
+              saldoPendiente: montoBruto,
+              estado: EstadoPrestamoEmpleado.VIGENTE,
+              observaciones: c.descripcion,
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+          prestamoId = nuevoPrestamo.id;
+        }
+
+        await tx.liquidacionItemConcepto.create({
+          data: {
+            liquidacionItemId: item.id,
+            tipo: c.tipo,
+            descripcion: c.descripcion,
+            cantidad: c.cantidad != null ? new Prisma.Decimal(c.cantidad) : null,
+            valorUnitario: c.valorUnitario != null ? new Prisma.Decimal(c.valorUnitario) : null,
+            monto: montoSignado,
+            obraId: c.obraId ?? null,
+            prestamoId,
+            orden: c.orden ?? ordenCursor,
+          },
+        });
+        ordenCursor++;
+
+        subtotal = subtotal.plus(montoSignado);
+      }
+
+      const aPagar = subtotal;
+
+      await tx.liquidacionItem.update({
+        where: { id: item.id },
+        data: { subtotal, aPagar },
+      });
+
       await this.recalcularTotales(tx, liquidacionId, userId);
-      return item;
+      return tx.liquidacionItem.findUniqueOrThrow({
+        where: { id: item.id },
+        include: { conceptos: true },
+      });
     });
   }
 
@@ -227,7 +268,7 @@ export class LiquidacionesService {
       throw new BadRequestException('Solo se pueden eliminar items de liquidaciones en BORRADOR');
     }
     return this.prisma.$transaction(async (tx) => {
-      await this.revertirAplicacionesItem(tx, itemId);
+      await this.revertirEfectosDeConceptos(tx, itemId);
       await tx.liquidacionItem.delete({ where: { id: itemId } });
       await this.recalcularTotales(tx, item.liquidacionId, userId);
       return { ok: true };
@@ -244,9 +285,7 @@ export class LiquidacionesService {
     if (nuevo === EstadoLiquidacion.CERRADA) {
       const saldo = new Prisma.Decimal(liq.totalAPagar).minus(new Prisma.Decimal(liq.totalPagado));
       if (saldo.gt(0)) {
-        throw new BadRequestException(
-          `No se puede cerrar: saldo pendiente $${saldo.toFixed(2)}`,
-        );
+        throw new BadRequestException(`No se puede cerrar: saldo pendiente $${saldo.toFixed(2)}`);
       }
     }
 
@@ -271,10 +310,12 @@ export class LiquidacionesService {
 
   /**
    * Paga la liquidación (parcial o total).
-   * - Si no se pasa monto, se paga el saldo pendiente completo.
-   * - Crea LiquidacionPago + Movimiento (EGRESO) imputado 100% a la obra.
-   * - Si el saldo se cierra, pasa a PAGADA y marca los items como pagados.
-   * - Si queda saldo, pasa a PAGADA_PARCIAL.
+   * El movimiento de egreso se imputa por obra según los conceptos positivos:
+   *   - Conceptos con obraId → esa obra.
+   *   - Conceptos sin obraId → la obra de la liquidación.
+   *   - Los conceptos negativos (DEDUCCION, PRESTAMO_APLICACION, VALE) y
+   *     NOTA_SALDO no toman imputación — el pago parcial se reparte
+   *     proporcionalmente entre los positivos.
    */
   async pagar(liquidacionId: string, dto: PagarLiquidacionDto, userId: string) {
     const liq = await this.findOne(liquidacionId);
@@ -317,6 +358,9 @@ export class LiquidacionesService {
 
     const fechaPago = dto.fechaPago ?? new Date();
 
+    // Agrupar positivos por obra para las imputaciones
+    const imputacionesPorObra = this.calcularImputacionesPorObra(liq, montoAPagar);
+
     return this.prisma.$transaction(async (tx) => {
       const grupoId = randomUUID();
       const montoNum = Number(montoAPagar.toFixed(2));
@@ -325,7 +369,7 @@ export class LiquidacionesService {
       const montoUsd =
         caja.moneda === Moneda.USD ? montoNum.toFixed(2) : arsAUsd(montoNum, cotizacionNum).toFixed(2);
 
-      // Movimiento EGRESO imputado 100% a la obra de la liquidación
+      // Movimiento EGRESO con imputaciones por obra según conceptos
       const mov = await tx.movimiento.create({
         data: {
           tipo: TipoMovimiento.EGRESO,
@@ -347,13 +391,11 @@ export class LiquidacionesService {
           createdById: userId,
           updatedById: userId,
           imputaciones: {
-            create: [
-              {
-                obraId: liq.obraId,
-                monto: montoAPagar,
-                porcentaje: new Prisma.Decimal(100),
-              },
-            ],
+            create: imputacionesPorObra.map((i) => ({
+              obraId: i.obraId,
+              monto: new Prisma.Decimal(i.monto.toFixed(2)),
+              porcentaje: new Prisma.Decimal(i.porcentaje.toFixed(4)),
+            })),
           },
         },
       });
@@ -430,16 +472,45 @@ export class LiquidacionesService {
 
   // ---------- helpers ----------
 
-  private async revertirAplicacionesItem(tx: Prisma.TransactionClient, itemId: string) {
+  private validarConceptos(conceptos: ConceptoInput[], beneficiarioId: string | undefined) {
+    const conPrestamoApp = conceptos.some(
+      (c) => c.tipo === TipoConceptoLiquidacion.PRESTAMO_APLICACION,
+    );
+    const conPrestamoEnt = conceptos.some(
+      (c) => c.tipo === TipoConceptoLiquidacion.PRESTAMO_ENTREGADO,
+    );
+    if ((conPrestamoApp || conPrestamoEnt) && !beneficiarioId) {
+      throw new BadRequestException('Préstamos (entregados o aplicados) requieren beneficiario');
+    }
+    for (const c of conceptos) {
+      if (
+        c.tipo === TipoConceptoLiquidacion.PRESTAMO_APLICACION &&
+        !c.prestamoId
+      ) {
+        throw new BadRequestException(
+          'Concepto PRESTAMO_APLICACION: falta prestamoId',
+        );
+      }
+      if (c.monto < 0) {
+        throw new BadRequestException(
+          'El monto del concepto siempre se envía positivo; el signo lo pone el sistema según el tipo',
+        );
+      }
+    }
+  }
+
+  private async revertirEfectosDeConceptos(tx: Prisma.TransactionClient, itemId: string) {
+    // 1. Aplicaciones de préstamo: devolver el monto al saldoPendiente
     const aplicaciones = await tx.prestamoAplicacion.findMany({
       where: { liquidacionItemId: itemId },
     });
     for (const ap of aplicaciones) {
       const prestamo = await tx.prestamoEmpleado.findUnique({
         where: { id: ap.prestamoId },
-        select: { saldoPendiente: true, monto: true },
+        select: { saldoPendiente: true, estado: true },
       });
       if (!prestamo) continue;
+      if (prestamo.estado === EstadoPrestamoEmpleado.ANULADO) continue;
       const nuevoSaldo = new Prisma.Decimal(prestamo.saldoPendiente).plus(ap.monto);
       await tx.prestamoEmpleado.update({
         where: { id: ap.prestamoId },
@@ -451,7 +522,100 @@ export class LiquidacionesService {
         },
       });
     }
-    await tx.prestamoAplicacion.deleteMany({ where: { liquidacionItemId: itemId } });
+
+    // 2. Préstamos entregados (nacidos desde un concepto): anular los que
+    //    todavía no tienen aplicaciones (saldoPendiente == monto).
+    //    Si alguien ya empezó a descontar, el préstamo permanece (no podemos
+    //    "deshacer" si otro item ya lo aplicó); se marca manualmente.
+    const conceptosEntregados = await tx.liquidacionItemConcepto.findMany({
+      where: { liquidacionItemId: itemId, tipo: TipoConceptoLiquidacion.PRESTAMO_ENTREGADO },
+    });
+    for (const c of conceptosEntregados) {
+      if (!c.prestamoId) continue;
+      const prestamo = await tx.prestamoEmpleado.findUnique({
+        where: { id: c.prestamoId },
+        include: { aplicaciones: true },
+      });
+      if (!prestamo) continue;
+      if (prestamo.aplicaciones.length === 0 && prestamo.movimientoId == null) {
+        // Nadie lo tocó ni se pagó aún; podemos eliminarlo.
+        await tx.prestamoEmpleado.delete({ where: { id: c.prestamoId } });
+      }
+    }
+  }
+
+  /**
+   * Reparte el monto a pagar entre las obras según los conceptos positivos.
+   * - Si todos los positivos apuntan a la obra de la liquidación: una sola imputación 100%.
+   * - Si hay conceptos con obraId distinto: se arma el mapa obra → monto y
+   *   se saca el porcentaje proporcional. Ajuste de redondeo sobre la última.
+   */
+  private calcularImputacionesPorObra(
+    liq: Awaited<ReturnType<LiquidacionesService['findOne']>>,
+    montoAPagar: Prisma.Decimal,
+  ): Array<{ obraId: string; monto: number; porcentaje: number }> {
+    const obraPorDefecto = liq.obraId;
+    const positivosPorObra = new Map<string, Prisma.Decimal>();
+    let totalPositivos = new Prisma.Decimal(0);
+
+    for (const item of liq.items) {
+      for (const c of item.conceptos) {
+        const signo = SIGNO_POR_TIPO[c.tipo];
+        if (signo !== 1) continue;
+        const obraId = c.obraId ?? obraPorDefecto;
+        const monto = new Prisma.Decimal(c.monto).abs();
+        positivosPorObra.set(
+          obraId,
+          (positivosPorObra.get(obraId) ?? new Prisma.Decimal(0)).plus(monto),
+        );
+        totalPositivos = totalPositivos.plus(monto);
+      }
+    }
+
+    // Caso borde: no hay positivos (todos los items son NOTA_SALDO o solo descuentos).
+    // Pagar con una única imputación 100% a la obra de la liquidación.
+    if (totalPositivos.lte(0)) {
+      return [
+        {
+          obraId: obraPorDefecto,
+          monto: Number(montoAPagar.toFixed(2)),
+          porcentaje: 100,
+        },
+      ];
+    }
+
+    const resultado: Array<{ obraId: string; monto: number; porcentaje: number }> = [];
+    const entries = [...positivosPorObra.entries()];
+    let acumuladoMonto = new Prisma.Decimal(0);
+    let acumuladoPct = new Prisma.Decimal(0);
+
+    for (let i = 0; i < entries.length; i++) {
+      const [obraId, aporte] = entries[i];
+      const esUltima = i === entries.length - 1;
+      let montoObra: Prisma.Decimal;
+      let pctObra: Prisma.Decimal;
+
+      if (esUltima) {
+        // Absorbe el redondeo
+        montoObra = montoAPagar.minus(acumuladoMonto);
+        pctObra = new Prisma.Decimal(100).minus(acumuladoPct);
+      } else {
+        const proporcion = aporte.div(totalPositivos);
+        montoObra = montoAPagar.mul(proporcion);
+        montoObra = new Prisma.Decimal(montoObra.toFixed(2));
+        pctObra = proporcion.mul(100);
+        pctObra = new Prisma.Decimal(pctObra.toFixed(4));
+        acumuladoMonto = acumuladoMonto.plus(montoObra);
+        acumuladoPct = acumuladoPct.plus(pctObra);
+      }
+
+      resultado.push({
+        obraId,
+        monto: Number(montoObra.toFixed(2)),
+        porcentaje: Number(pctObra.toFixed(4)),
+      });
+    }
+    return resultado;
   }
 
   private async recalcularTotales(
@@ -459,16 +623,26 @@ export class LiquidacionesService {
     liquidacionId: string,
     userId: string,
   ) {
-    const items = await tx.liquidacionItem.findMany({ where: { liquidacionId } });
-    const totalBruto = items.reduce((acc, i) => acc.add(i.subtotal), new Prisma.Decimal(0));
-    const totalDescuentos = items.reduce(
-      (acc, i) => acc.add(i.descuentos).add(i.prestamosAplicados),
-      new Prisma.Decimal(0),
-    );
-    const totalAPagar = items.reduce((acc, i) => acc.add(i.aPagar), new Prisma.Decimal(0));
+    const items = await tx.liquidacionItem.findMany({
+      where: { liquidacionId },
+      include: { conceptos: true },
+    });
+
+    let totalBruto = new Prisma.Decimal(0);
+    let totalDescuentos = new Prisma.Decimal(0);
+    let totalAPagar = new Prisma.Decimal(0);
+    for (const item of items) {
+      totalAPagar = totalAPagar.plus(item.aPagar);
+      for (const c of item.conceptos) {
+        const signo = SIGNO_POR_TIPO[c.tipo];
+        if (signo === 1) totalBruto = totalBruto.plus(new Prisma.Decimal(c.monto).abs());
+        if (signo === -1) totalDescuentos = totalDescuentos.plus(new Prisma.Decimal(c.monto).abs());
+      }
+    }
     const totalPagado = items
       .filter((i) => i.pagado)
-      .reduce((acc, i) => acc.add(i.aPagar), new Prisma.Decimal(0));
+      .reduce((acc, i) => acc.plus(i.aPagar), new Prisma.Decimal(0));
+
     await tx.liquidacionSemanal.update({
       where: { id: liquidacionId },
       data: { totalBruto, totalDescuentos, totalAPagar, totalPagado, updatedById: userId },

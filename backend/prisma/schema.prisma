@@ -101,6 +101,24 @@ enum EstadoPrestamoEmpleado {
   ANULADO
 }
 
+/// Tipos de concepto que pueden aparecer en un recibo (LiquidacionItem).
+/// Cada tipo tiene un signo lógico definido (sumar o restar al subtotal);
+/// NOTA_SALDO es informativo y no afecta el total.
+enum TipoConceptoLiquidacion {
+  JORNAL
+  JORNAL_ESPECIAL
+  HORAS_EXTRA
+  VIATICO
+  VACACIONES
+  CERTIFICACION
+  SUELDO
+  PRESTAMO_ENTREGADO
+  PRESTAMO_APLICACION
+  DEDUCCION
+  VALE
+  NOTA_SALDO
+}
+
 enum CotizacionTipoBlue {
   BLUE
   OFICIAL
@@ -232,6 +250,9 @@ model Usuario {
   empresasCreadas             Empresa[]                 @relation("EmpresaCreadaPor")
   empresasActualizadas        Empresa[]                 @relation("EmpresaActualizadaPor")
   jornalHistoricosCreados     EmpleadoJornalHistorico[] @relation("JornalHistCreadoPor")
+  catEmpleadoCreadas          CategoriaEmpleado[]         @relation("CatEmpleadoCreadaPor")
+  catEmpleadoActualizadas     CategoriaEmpleado[]         @relation("CatEmpleadoActualizadaPor")
+  catEmpleadoHistoricosCreados CategoriaEmpleadoHistorico[] @relation("CatEmpleadoHistCreadoPor")
   prestamosCreados            PrestamoEmpleado[]        @relation("PrestamoCreadoPor")
   prestamosActualizados       PrestamoEmpleado[]        @relation("PrestamoActualizadoPor")
   certificacionesCreadas      Certificacion[]           @relation("CertCreadaPor")
@@ -335,13 +356,14 @@ model Obra {
   monedaContrato  Moneda?
   activo          Boolean    @default(true)
 
-  imputaciones    Imputacion[]
-  movimientos     Movimiento[]            @relation("MovimientoObraIngreso")
-  liquidaciones   LiquidacionSemanal[]
-  certificaciones Certificacion[]
-  contratosCuotas ContratoCuota[]
-  vencimientos    VencimientoRecurrente[]
-  compromisos     CompromisoPago[]
+  imputaciones            Imputacion[]
+  movimientos             Movimiento[]              @relation("MovimientoObraIngreso")
+  liquidaciones           LiquidacionSemanal[]
+  liquidacionItemConceptos LiquidacionItemConcepto[]
+  certificaciones         Certificacion[]
+  contratosCuotas         ContratoCuota[]
+  vencimientos            VencimientoRecurrente[]
+  compromisos             CompromisoPago[]
 
   createdById String?
   updatedById String?
@@ -400,8 +422,11 @@ model EmpleadoLegajo {
   fechaIngreso    DateTime        @db.Date
   dni             String?
   empresaId       String?
+  categoriaId     String?
   situacionFiscal SituacionFiscal @default(NEGRO)
-  // Puede cobrar por jornal o por semana. Al menos uno.
+  // Jornal / hora extra efectivos del empleado. Si categoriaId está seteado
+  // y el empleado no tiene valor propio, estos se heredan de la categoría al
+  // crear/actualizar; si tiene valor propio, prevalece el propio.
   jornal          Decimal?        @db.Decimal(14, 2)
   valorHoraExtra  Decimal?        @db.Decimal(14, 2)
   montoSemanal    Decimal?        @db.Decimal(14, 2)
@@ -409,8 +434,9 @@ model EmpleadoLegajo {
   obraActualId    String?
   observaciones   String?
 
-  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id], onDelete: Cascade)
-  empresa      Empresa?     @relation(fields: [empresaId], references: [id])
+  beneficiario Beneficiario       @relation(fields: [beneficiarioId], references: [id], onDelete: Cascade)
+  empresa      Empresa?           @relation(fields: [empresaId], references: [id])
+  categoria    CategoriaEmpleado? @relation(fields: [categoriaId], references: [id])
 
   historialJornales EmpleadoJornalHistorico[]
 
@@ -418,7 +444,57 @@ model EmpleadoLegajo {
   updatedAt DateTime @updatedAt
 
   @@index([empresaId])
+  @@index([categoriaId])
   @@index([obraActualId])
+}
+
+/// Categoría laboral del empleado (Oficial Capataz, Oficial, Medio Oficial,
+/// Ayudante, etc.). Tiene jornal y valor hora extra "de referencia". Cambiar
+/// estos valores propaga a todos los empleados de la categoría y queda
+/// registrado en `CategoriaEmpleadoHistorico` + un `EmpleadoJornalHistorico`
+/// por empleado afectado.
+model CategoriaEmpleado {
+  id             String   @id @default(uuid())
+  codigo         String   @unique
+  nombre         String
+  jornal         Decimal? @db.Decimal(14, 2)
+  valorHoraExtra Decimal? @db.Decimal(14, 2)
+  orden          Int      @default(0)
+  activo         Boolean  @default(true)
+
+  empleados EmpleadoLegajo[]
+  historial CategoriaEmpleadoHistorico[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("CatEmpleadoCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("CatEmpleadoActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+/// Un registro por cada cambio de jornal / valor de hora extra de una categoría.
+/// Permite auditar aumentos salariales por categoría.
+model CategoriaEmpleadoHistorico {
+  id             String   @id @default(uuid())
+  categoriaId    String
+  jornal         Decimal  @db.Decimal(14, 2)
+  valorHoraExtra Decimal? @db.Decimal(14, 2)
+  vigenteDesde   DateTime @db.Date
+  motivo         String?
+  empleadosAfectados Int  @default(0)
+
+  categoria CategoriaEmpleado @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   Usuario? @relation("CatEmpleadoHistCreadoPor", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([categoriaId, vigenteDesde])
 }
 
 /// Un registro por cada cambio de jornal / valor de hora extra.
@@ -480,7 +556,8 @@ model PrestamoEmpleado {
   beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id])
   movimiento   Movimiento?  @relation("PrestamoMovimientoOrigen", fields: [movimientoId], references: [id])
 
-  aplicaciones PrestamoAplicacion[]
+  aplicaciones      PrestamoAplicacion[]
+  conceptosReferencia LiquidacionItemConcepto[] @relation("PrestamoConceptoReferencia")
 
   createdById String?
   updatedById String?
@@ -787,26 +864,26 @@ model LiquidacionSemanal {
   @@index([semanaInicio, semanaFin])
 }
 
+/// Un recibo dentro de una liquidación semanal (una persona).
+/// Los montos (subtotal, aPagar) se derivan de los conceptos asociados:
+///   subtotal = Σ monto de conceptos con signo aplicado según tipo
+///   aPagar   = subtotal (los descuentos/aplicaciones son conceptos negativos)
+/// El service recalcula ambos en cada upsert dentro de una transacción.
 model LiquidacionItem {
-  id                 String    @id @default(uuid())
-  liquidacionId      String
-  beneficiarioId     String? // null si solo matcheamos por nombreLibre durante la migración
-  nombreLibre        String // nombre tal como aparece en la planilla original
-  diasTrabajados     Decimal   @default(0) @db.Decimal(6, 2)
-  valorDia           Decimal   @default(0) @db.Decimal(14, 2) // jornal congelado
-  horasExtras        Decimal   @default(0) @db.Decimal(6, 2)
-  valorHoraExtra     Decimal   @default(0) @db.Decimal(14, 2) // congelado
-  subtotal           Decimal   @default(0) @db.Decimal(14, 2) // dias*valorDia + hs*valorHoraExtra
-  descuentos         Decimal   @default(0) @db.Decimal(14, 2) // descuentos manuales
-  prestamosAplicados Decimal   @default(0) @db.Decimal(14, 2) // suma de PrestamoAplicacion
-  aPagar             Decimal   @default(0) @db.Decimal(14, 2) // subtotal - descuentos - prestamosAplicados
-  pagado             Boolean   @default(false)
-  fechaPago          DateTime? @db.Date
-  observaciones      String?
+  id             String    @id @default(uuid())
+  liquidacionId  String
+  beneficiarioId String? // null si solo matcheamos por nombreLibre durante la migración
+  nombreLibre    String // nombre tal como aparece en la planilla original
+  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
+  aPagar         Decimal   @default(0) @db.Decimal(14, 2)
+  pagado         Boolean   @default(false)
+  fechaPago      DateTime? @db.Date
+  observaciones  String?
 
   liquidacion  LiquidacionSemanal @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
   beneficiario Beneficiario?      @relation(fields: [beneficiarioId], references: [id])
 
+  conceptos            LiquidacionItemConcepto[]
   aplicacionesPrestamo PrestamoAplicacion[]
 
   createdAt DateTime @default(now())
@@ -814,6 +891,42 @@ model LiquidacionItem {
 
   @@index([liquidacionId])
   @@index([beneficiarioId])
+}
+
+/// Línea de un recibo. Cada ítem del recibo real (día × jornal, hs extra,
+/// viático, vacaciones, certificación por obra distinta, préstamo entregado,
+/// aplicación de préstamo, deducción, nota informativa) es un concepto.
+/// El `monto` ya viene con signo según el tipo: positivo para los que suman
+/// (JORNAL, HS extra, viático, vacaciones, certificación, sueldo, préstamo
+/// entregado), negativo para los que restan (deducción, aplicación préstamo,
+/// vale), 0 para NOTA_SALDO (solo informativo).
+model LiquidacionItemConcepto {
+  id             String                  @id @default(uuid())
+  liquidacionItemId String
+  tipo           TipoConceptoLiquidacion
+  descripcion    String
+  cantidad       Decimal?                @db.Decimal(10, 3) // días, horas, unidades
+  valorUnitario  Decimal?                @db.Decimal(14, 2)
+  monto          Decimal                 @db.Decimal(14, 2) // signado; computado al guardar
+  /// Obra a la que se imputa el concepto en el costo por obra. Si null, usa
+  /// la obra de la liquidación. Soporta certificaciones imputadas a otras obras.
+  obraId         String?
+  /// Para PRESTAMO_APLICACION: préstamo existente del que se descuenta.
+  /// Para PRESTAMO_ENTREGADO: préstamo nuevo que nace de este concepto (lo
+  /// setea el service al confirmar).
+  prestamoId     String?
+  orden          Int                     @default(0)
+
+  liquidacionItem LiquidacionItem   @relation(fields: [liquidacionItemId], references: [id], onDelete: Cascade)
+  obra            Obra?             @relation(fields: [obraId], references: [id])
+  prestamo        PrestamoEmpleado? @relation("PrestamoConceptoReferencia", fields: [prestamoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([liquidacionItemId, orden])
+  @@index([obraId])
+  @@index([prestamoId])
+  @@index([tipo])
 }
 
 /// Pago parcial o total de una liquidación. Cada pago genera un Movimiento.

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
-import { EstadoLiquidacion, MedioPago } from '@prisma/client';
+import { EstadoLiquidacion, MedioPago, TipoConceptoLiquidacion } from '@prisma/client';
 
 /**
- * DTOs de liquidaciones semanales — v2.
- * Una liquidación es por obra y por semana. Los días son un número (no por día).
- * Soporta hs. extras y descuentos de préstamos a empleados.
+ * DTOs de liquidaciones semanales — v3.
+ * Un recibo (LiquidacionItem) es una persona con N conceptos tipados.
+ * El subtotal y aPagar se derivan de los conceptos; no se envían.
  */
 
 export const CreateLiquidacionSchema = z
@@ -21,22 +21,24 @@ export const CreateLiquidacionSchema = z
   });
 export class CreateLiquidacionDto extends createZodDto(CreateLiquidacionSchema) {}
 
-const PrestamoAplicarSchema = z.object({
-  prestamoId: z.string().uuid(),
-  monto: z.coerce.number().positive(),
+export const ConceptoSchema = z.object({
+  tipo: z.nativeEnum(TipoConceptoLiquidacion),
+  descripcion: z.string().min(1).max(500),
+  cantidad: z.coerce.number().min(0).optional(),
+  valorUnitario: z.coerce.number().min(0).optional(),
+  monto: z.coerce.number(), // bruto, siempre positivo; el service aplica signo según tipo
+  obraId: z.string().uuid().optional(),
+  prestamoId: z.string().uuid().optional(), // requerido para PRESTAMO_APLICACION
+  orden: z.coerce.number().int().min(0).optional(),
 });
+export type ConceptoInput = z.infer<typeof ConceptoSchema>;
 
 export const UpsertItemSchema = z.object({
   id: z.string().uuid().optional(), // si viene, actualiza
   beneficiarioId: z.string().uuid().optional(),
   nombreLibre: z.string().min(1).max(200),
-  diasTrabajados: z.coerce.number().min(0).max(7),
-  valorDia: z.coerce.number().min(0),
-  horasExtras: z.coerce.number().min(0).max(100).default(0),
-  valorHoraExtra: z.coerce.number().min(0).default(0),
-  descuentos: z.coerce.number().min(0).default(0),
-  prestamosAplicar: z.array(PrestamoAplicarSchema).default([]),
   observaciones: z.string().max(500).optional(),
+  conceptos: z.array(ConceptoSchema).min(1, 'El recibo tiene que tener al menos un concepto'),
 });
 export class UpsertItemDto extends createZodDto(UpsertItemSchema) {}
 
@@ -53,8 +55,8 @@ export const PagarLiquidacionSchema = z.object({
   cajaId: z.string().uuid(),
   medioPago: z.nativeEnum(MedioPago).default('EFECTIVO'),
   fechaPago: z.coerce.date().optional(),
-  categoriaId: z.string().uuid().optional(), // default: categoría JORN
-  monto: z.coerce.number().positive().optional(), // default: saldo pendiente
+  categoriaId: z.string().uuid().optional(),
+  monto: z.coerce.number().positive().optional(),
   observaciones: z.string().max(500).optional(),
 });
 export class PagarLiquidacionDto extends createZodDto(PagarLiquidacionSchema) {}

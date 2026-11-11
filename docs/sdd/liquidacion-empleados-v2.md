@@ -17,6 +17,13 @@
 
 ## 2. Qué se cambia
 
+> **Actualización 2026-11-11 (post-análisis de planillas reales):** se agregan
+> `CategoriaEmpleado` + historial, `LiquidacionItemConcepto` tipado, y se
+> remueven los campos fijos de `LiquidacionItem` (hs extras, valor hora extra,
+> descuentos, préstamos aplicados). Ahora un recibo es una persona con N
+> conceptos tipados; el subtotal se deriva de la suma firmada de conceptos.
+> Ver [`/docs/excels-cliente/ANALISIS.md`](../excels-cliente/ANALISIS.md).
+
 ### 2.1 Modelos nuevos
 
 **`Empresa`** — razón social a la que pertenece cada empleado (Cardi, Picardi u otra configurable).
@@ -39,11 +46,27 @@ La suma de aplicaciones de un préstamo nunca supera `monto` original. `saldoPen
 Campos: `id`, `liquidacionId`, `movimientoId` (el egreso en billetera), `monto`, `fecha`, `medioPago`, `cajaId`, `createdById`, `createdAt`.
 Una liquidación puede tener N pagos. `totalPagado = sum(LiquidacionPago.monto − reversas)`.
 
+**`CategoriaEmpleado`** (v3) — categoría laboral con jornal y hora extra "de referencia".
+Campos: `id`, `codigo` (unique: OF_CAP, OF_SOL, OF, MO_BUENO, MO, AYU, etc.), `nombre`, `jornal`, `valorHoraExtra`, `orden`, `activo`, auditoría.
+Al editar el jornal de la categoría, el service propaga a todos los empleados activos y crea un `EmpleadoJornalHistorico` por empleado + un `CategoriaEmpleadoHistorico`.
+
+**`CategoriaEmpleadoHistorico`** (v3) — snapshot de cada cambio de jornal de una categoría. Campos: `id`, `categoriaId`, `jornal`, `valorHoraExtra`, `vigenteDesde`, `motivo`, `empleadosAfectados` (contador), `createdById`, `createdAt`.
+
+**`LiquidacionItemConcepto`** (v3) — línea del recibo. Un recibo (`LiquidacionItem`) ahora tiene N conceptos tipados.
+Campos: `id`, `liquidacionItemId`, `tipo` (enum TipoConceptoLiquidacion), `descripcion`, `cantidad`, `valorUnitario`, `monto` (ya signado), `obraId?` (para certificaciones imputadas a otra obra), `prestamoId?` (para aplicaciones y entregas), `orden`.
+El tipo determina el signo del monto (la DB lo guarda firmado). El service aplica el signo al guardar según `SIGNO_POR_TIPO`.
+
+**`TipoConceptoLiquidacion`** (enum v3):
+- Positivos (suman al subtotal): `JORNAL`, `JORNAL_ESPECIAL`, `HORAS_EXTRA`, `VIATICO`, `VACACIONES`, `CERTIFICACION`, `SUELDO`, `PRESTAMO_ENTREGADO`.
+- Negativos (restan): `PRESTAMO_APLICACION`, `DEDUCCION`, `VALE`.
+- Neutros (informativos): `NOTA_SALDO`.
+
 ### 2.2 Modelos modificados
 
 **`EmpleadoLegajo`** — agregar:
 - `dni: String?`
 - `empresaId: String?` → FK a `Empresa`
+- `categoriaId: String?` → FK a `CategoriaEmpleado` (v3). Si está seteado y el empleado no tiene jornal propio, se hereda al crear/actualizar.
 - `situacionFiscal: SituacionFiscal` (default `NEGRO`)
 - `valorHoraExtra: Decimal?` (14,2) → por defecto `jornal / 8 * 1.5`, pero editable
 - Mantener `jornal`, `montoSemanal`, `moneda` (siempre ARS pero dejamos la columna por simetría).
@@ -55,15 +78,14 @@ Una liquidación puede tener N pagos. `totalPagado = sum(LiquidacionPago.monto �
 - Agregar campo calculado persistido `totalAPagar` (suma de `aPagar` de items). `saldoPendiente` se deriva: `totalAPagar − totalPagado`.
 - Mantener totales (`totalBruto`, `totalDescuentos`, `totalPagado`).
 
-**`LiquidacionItem`** — agregar:
-- `horasExtras: Decimal` (6,2, default 0)
-- `valorHoraExtra: Decimal` (14,2, default 0) → congelado al crear/actualizar el item.
-- `prestamosAplicados: Decimal` (14,2, default 0) → suma de las `PrestamoAplicacion` ligadas a este item (desnormalizado para evitar un join en listados).
+**`LiquidacionItem`** (v3) — **simplificado**:
+Campos finales: `id`, `liquidacionId`, `beneficiarioId`, `nombreLibre`, `subtotal`, `aPagar`, `pagado`, `fechaPago`, `observaciones`.
+Se eliminaron `diasTrabajados`, `valorDia`, `horasExtras`, `valorHoraExtra`, `descuentos`, `prestamosAplicados` — todos se derivan de los conceptos.
 
 El subtotal pasa a:
 ```
-subtotal = diasTrabajados × valorDia + horasExtras × valorHoraExtra
-aPagar   = subtotal − descuentos − prestamosAplicados
+subtotal = Σ monto_signado(concepto) con signo según tipo, excluyendo NOTA_SALDO
+aPagar   = subtotal (los descuentos ya están incluidos como conceptos negativos)
 ```
 
 **`LiquidacionDia`** — se elimina. La obra ya está en la cabecera, los días son un número. Si en el futuro se necesita granularidad diaria, se vuelve a agregar.
@@ -105,7 +127,7 @@ Desde la liquidación `APROBADA` o `PAGADA_PARCIAL`:
 2. Elige caja (default: efectivo) y medio de pago.
 3. En una `$transaction`:
    - Crea `LiquidacionPago` con monto y fecha.
-   - Crea `Movimiento` (EGRESO) imputado 100% a la obra de la liquidación. `origen = LIQUIDACION`, `origenId = liquidacionId`. `grupoId` = uuid por pago (así una anulación de pago anula solo esa pata).
+   - Crea `Movimiento` (EGRESO) con imputaciones por obra calculadas a partir de los conceptos positivos de todos los items (v3). Conceptos con `obraId` van a esa obra; conceptos sin `obraId` van a la obra de la liquidación. Si el pago es parcial, los aportes por obra se escalan proporcionalmente. `origen = LIQUIDACION`, `origenId = liquidacionId`.
    - Actualiza `totalPagado` y `estado` (`PAGADA_PARCIAL` si saldo > 0, `PAGADA` si saldo <= 0; saldo < 0 queda como "a favor" informativo, no bloquea).
    - Marca `LiquidacionItem.pagado = true` solo cuando `totalPagado >= totalAPagar`.
 
