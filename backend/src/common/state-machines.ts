@@ -37,11 +37,14 @@ const movimientoTransitions: Transitions<EstadoMovimiento> = {
   REVERSA: [],
 };
 
-// Liquidación semanal
+// Liquidación semanal.
+// PAGADA_PARCIAL y PAGADA los setea automáticamente el service según el saldo;
+// no se cambian a mano (por eso no hay transición explícita para "pagar").
 const liquidacionTransitions: Transitions<EstadoLiquidacion> = {
   BORRADOR: ['APROBADA'],
-  APROBADA: ['PAGADA', 'BORRADOR'],
-  PAGADA: ['CERRADA'],
+  APROBADA: ['PAGADA_PARCIAL', 'PAGADA', 'BORRADOR'],
+  PAGADA_PARCIAL: ['PAGADA', 'APROBADA'],
+  PAGADA: ['CERRADA', 'PAGADA_PARCIAL'],
   CERRADA: [],
 };
 

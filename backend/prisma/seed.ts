@@ -52,7 +52,13 @@ const CATEGORIAS = [
   { codigo: 'IMP', nombre: 'Impuestos', orden: 70 },
   { codigo: 'SERV', nombre: 'Servicios', orden: 80 },
   { codigo: 'GRAL', nombre: 'Gastos generales', orden: 90 },
+  { codigo: 'PREST_EMP', nombre: 'Préstamos a empleados', orden: 95 },
   { codigo: 'RET', nombre: 'Retiros', orden: 100 },
+] as const;
+
+const EMPRESAS = [
+  { nombre: 'Cardi' },
+  { nombre: 'Picardi' },
 ] as const;
 
 const CAJAS = [
@@ -151,6 +157,16 @@ async function seedCajas() {
   }
 }
 
+async function seedEmpresas() {
+  for (const empresa of EMPRESAS) {
+    await prisma.empresa.upsert({
+      where: { nombre: empresa.nombre },
+      create: { nombre: empresa.nombre, activo: true },
+      update: {},
+    });
+  }
+}
+
 async function main() {
   console.log('→ Sembrando datos provisorios (idempotente)');
   await seedConfiguracion();
@@ -158,10 +174,12 @@ async function main() {
   await seedObras();
   await seedCategorias();
   await seedCajas();
+  await seedEmpresas();
   console.log(`✓ Admin: ${admin.username}${admin.email ? ` (${admin.email})` : ''}`);
   console.log(`✓ Obras: ${OBRAS_CONOCIDAS.length} (incluye "Gastos generales")`);
-  console.log(`✓ Categorías: ${CATEGORIAS.length}`);
+  console.log(`✓ Categorías: ${CATEGORIAS.length} (incluye "Préstamos a empleados")`);
   console.log(`✓ Cajas: ${CAJAS.length}`);
+  console.log(`✓ Empresas: ${EMPRESAS.length}`);
   console.log('→ Listo. Reemplazar con datos reales tras el relevamiento con Cardi.');
 }
 

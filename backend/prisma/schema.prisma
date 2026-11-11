@@ -87,6 +87,18 @@ enum OrigenMovimiento {
   CUOTA
   COMPROMISO
   MIGRACION
+  PRESTAMO
+}
+
+enum SituacionFiscal {
+  BLANCO
+  NEGRO
+}
+
+enum EstadoPrestamoEmpleado {
+  VIGENTE
+  SALDADO
+  ANULADO
 }
 
 enum CotizacionTipoBlue {
@@ -129,6 +141,7 @@ enum EstadoCheque {
 enum EstadoLiquidacion {
   BORRADOR
   APROBADA
+  PAGADA_PARCIAL
   PAGADA
   CERRADA
 }
@@ -199,26 +212,32 @@ model Usuario {
   auditLogs AuditLog[] @relation("AuditLogUsuario")
 
   // Trazabilidad en todos los modelos editables
-  obrasCreadas                Obra[]               @relation("ObraCreadaPor")
-  obrasActualizadas           Obra[]               @relation("ObraActualizadaPor")
-  beneficiariosCreados        Beneficiario[]       @relation("BeneficiarioCreadoPor")
-  beneficiariosActualizados   Beneficiario[]       @relation("BeneficiarioActualizadoPor")
-  categoriasCreadas           CategoriaGasto[]     @relation("CategoriaCreadaPor")
-  categoriasActualizadas      CategoriaGasto[]     @relation("CategoriaActualizadaPor")
-  cajasCreadas                Caja[]               @relation("CajaCreadaPor")
-  cajasActualizadas           Caja[]               @relation("CajaActualizadaPor")
-  movimientosCreados          Movimiento[]         @relation("MovCreadoPor")
-  movimientosActualizados     Movimiento[]         @relation("MovActualizadoPor")
-  movimientosAnulados         Movimiento[]         @relation("MovAnuladoPor")
-  chequesCreados              Cheque[]             @relation("ChequeCreadoPor")
-  chequesActualizados         Cheque[]             @relation("ChequeActualizadoPor")
-  liquidacionesCreadas        LiquidacionSemanal[] @relation("LiqCreadaPor")
-  liquidacionesActualizadas   LiquidacionSemanal[] @relation("LiqActualizadaPor")
-  liquidacionesCerradas       LiquidacionSemanal[] @relation("LiqCerradaPor")
-  certificacionesCreadas      Certificacion[]      @relation("CertCreadaPor")
-  certificacionesActualizadas Certificacion[]      @relation("CertActualizadaPor")
-  recibosGenerados            Recibo[]             @relation("ReciboGeneradoPor")
-  migracionLotesCreados       MigracionLote[]      @relation("LoteCreadoPor")
+  obrasCreadas                Obra[]                    @relation("ObraCreadaPor")
+  obrasActualizadas           Obra[]                    @relation("ObraActualizadaPor")
+  beneficiariosCreados        Beneficiario[]            @relation("BeneficiarioCreadoPor")
+  beneficiariosActualizados   Beneficiario[]            @relation("BeneficiarioActualizadoPor")
+  categoriasCreadas           CategoriaGasto[]          @relation("CategoriaCreadaPor")
+  categoriasActualizadas      CategoriaGasto[]          @relation("CategoriaActualizadaPor")
+  cajasCreadas                Caja[]                    @relation("CajaCreadaPor")
+  cajasActualizadas           Caja[]                    @relation("CajaActualizadaPor")
+  movimientosCreados          Movimiento[]              @relation("MovCreadoPor")
+  movimientosActualizados     Movimiento[]              @relation("MovActualizadoPor")
+  movimientosAnulados         Movimiento[]              @relation("MovAnuladoPor")
+  chequesCreados              Cheque[]                  @relation("ChequeCreadoPor")
+  chequesActualizados         Cheque[]                  @relation("ChequeActualizadoPor")
+  liquidacionesCreadas        LiquidacionSemanal[]      @relation("LiqCreadaPor")
+  liquidacionesActualizadas   LiquidacionSemanal[]      @relation("LiqActualizadaPor")
+  liquidacionesCerradas       LiquidacionSemanal[]      @relation("LiqCerradaPor")
+  liqPagosCreados             LiquidacionPago[]         @relation("LiqPagoCreadoPor")
+  empresasCreadas             Empresa[]                 @relation("EmpresaCreadaPor")
+  empresasActualizadas        Empresa[]                 @relation("EmpresaActualizadaPor")
+  jornalHistoricosCreados     EmpleadoJornalHistorico[] @relation("JornalHistCreadoPor")
+  prestamosCreados            PrestamoEmpleado[]        @relation("PrestamoCreadoPor")
+  prestamosActualizados       PrestamoEmpleado[]        @relation("PrestamoActualizadoPor")
+  certificacionesCreadas      Certificacion[]           @relation("CertCreadaPor")
+  certificacionesActualizadas Certificacion[]           @relation("CertActualizadaPor")
+  recibosGenerados            Recibo[]                  @relation("ReciboGeneradoPor")
+  migracionLotesCreados       MigracionLote[]           @relation("LoteCreadoPor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -318,7 +337,7 @@ model Obra {
 
   imputaciones    Imputacion[]
   movimientos     Movimiento[]            @relation("MovimientoObraIngreso")
-  liquidacionDias LiquidacionDia[]
+  liquidaciones   LiquidacionSemanal[]
   certificaciones Certificacion[]
   contratosCuotas ContratoCuota[]
   vencimientos    VencimientoRecurrente[]
@@ -349,17 +368,18 @@ model Beneficiario {
   observaciones String?
   activo        Boolean          @default(true)
 
-  legajo          EmpleadoLegajo?
-  aliases         BeneficiarioAlias[]
-  movimientos     Movimiento[]
-  cheques         Cheque[]
-  liquidItems     LiquidacionItem[]
-  certificaciones Certificacion[]
-  contratos       ContratoCuota[]
-  vencimientos    VencimientoRecurrente[]
-  compromisos     CompromisoPago[]
-  recibos         Recibo[]
-  vacaciones      Vacacion[]
+  legajo            EmpleadoLegajo?
+  aliases           BeneficiarioAlias[]
+  movimientos       Movimiento[]
+  cheques           Cheque[]
+  liquidItems       LiquidacionItem[]
+  certificaciones   Certificacion[]
+  contratos         ContratoCuota[]
+  vencimientos      VencimientoRecurrente[]
+  compromisos       CompromisoPago[]
+  recibos           Recibo[]
+  vacaciones        Vacacion[]
+  prestamosEmpleado PrestamoEmpleado[]
 
   createdById String?
   updatedById String?
@@ -375,20 +395,121 @@ model Beneficiario {
 }
 
 model EmpleadoLegajo {
-  id             String   @id @default(uuid())
-  beneficiarioId String   @unique
-  fechaIngreso   DateTime @db.Date
+  id              String          @id @default(uuid())
+  beneficiarioId  String          @unique
+  fechaIngreso    DateTime        @db.Date
+  dni             String?
+  empresaId       String?
+  situacionFiscal SituacionFiscal @default(NEGRO)
   // Puede cobrar por jornal o por semana. Al menos uno.
-  jornal         Decimal? @db.Decimal(14, 2)
-  montoSemanal   Decimal? @db.Decimal(14, 2)
-  moneda         Moneda   @default(ARS)
-  obraActualId   String?
-  observaciones  String?
+  jornal          Decimal?        @db.Decimal(14, 2)
+  valorHoraExtra  Decimal?        @db.Decimal(14, 2)
+  montoSemanal    Decimal?        @db.Decimal(14, 2)
+  moneda          Moneda          @default(ARS)
+  obraActualId    String?
+  observaciones   String?
 
   beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id], onDelete: Cascade)
+  empresa      Empresa?     @relation(fields: [empresaId], references: [id])
+
+  historialJornales EmpleadoJornalHistorico[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@index([obraActualId])
+}
+
+/// Un registro por cada cambio de jornal / valor de hora extra.
+/// Al liquidar una semana vieja, se usa el jornal vigente a esa fecha.
+/// El valor actual se desnormaliza en `EmpleadoLegajo.jornal` / `.valorHoraExtra`.
+model EmpleadoJornalHistorico {
+  id             String   @id @default(uuid())
+  legajoId       String
+  jornal         Decimal  @db.Decimal(14, 2)
+  valorHoraExtra Decimal? @db.Decimal(14, 2)
+  vigenteDesde   DateTime @db.Date
+  motivo         String?
+
+  legajo EmpleadoLegajo @relation(fields: [legajoId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   Usuario? @relation("JornalHistCreadoPor", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([legajoId, vigenteDesde])
+}
+
+/// Razón social a la que pertenece el empleado (Cardi, Picardi, u otras).
+/// Cardi opera con varias, se maneja en una tabla propia.
+model Empresa {
+  id     String  @id @default(uuid())
+  nombre String  @unique
+  cuit   String?
+  activo Boolean @default(true)
+
+  empleados EmpleadoLegajo[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("EmpresaCreadaPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("EmpresaActualizadaPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+/// Préstamo entregado a un empleado. Nace de un egreso en billetera
+/// con categoría "Préstamos a empleados"; se descuenta parcial o totalmente
+/// en liquidaciones futuras via PrestamoAplicacion.
+model PrestamoEmpleado {
+  id             String                 @id @default(uuid())
+  beneficiarioId String // tipo EMPLEADO
+  fecha          DateTime               @db.Date
+  monto          Decimal                @db.Decimal(14, 2)
+  moneda         Moneda                 @default(ARS)
+  saldoPendiente Decimal                @db.Decimal(14, 2)
+  estado         EstadoPrestamoEmpleado @default(VIGENTE)
+  movimientoId   String? // egreso en billetera que lo originó
+  observaciones  String?
+
+  beneficiario Beneficiario @relation(fields: [beneficiarioId], references: [id])
+  movimiento   Movimiento?  @relation("PrestamoMovimientoOrigen", fields: [movimientoId], references: [id])
+
+  aplicaciones PrestamoAplicacion[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("PrestamoCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("PrestamoActualizadoPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([beneficiarioId])
+  @@index([estado])
+}
+
+/// Aplicación de un préstamo a una liquidación concreta (descuento de X$).
+/// SUM(monto) == PrestamoEmpleado.monto como máximo. saldoPendiente se mantiene
+/// consistente en el service dentro de una transacción.
+model PrestamoAplicacion {
+  id                String  @id @default(uuid())
+  prestamoId        String
+  liquidacionItemId String
+  monto             Decimal @db.Decimal(14, 2)
+
+  prestamo        PrestamoEmpleado @relation(fields: [prestamoId], references: [id], onDelete: Cascade)
+  liquidacionItem LiquidacionItem  @relation(fields: [liquidacionItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([prestamoId])
+  @@index([liquidacionItemId])
 }
 
 /// Nombres libres y apodos que aparecen en las planillas → beneficiario.
@@ -459,7 +580,8 @@ model Caja {
   fechaSaldoInicial DateTime @db.Date
   activo            Boolean  @default(true)
 
-  movimientos Movimiento[]
+  movimientos      Movimiento[]
+  pagosLiquidacion LiquidacionPago[]
 
   createdById String?
   updatedById String?
@@ -547,6 +669,9 @@ model Movimiento {
   reversas           Movimiento[]    @relation("MovimientoReversa")
   migracionFila      MigracionFila?  @relation(fields: [migracionFilaId], references: [id])
 
+  prestamosOriginados PrestamoEmpleado[] @relation("PrestamoMovimientoOrigen")
+  pagoLiquidacion     LiquidacionPago?
+
   imputaciones Imputacion[]
 
   // Auditoría
@@ -627,17 +752,23 @@ model Cheque {
 // PERSONAS Y COMPROMISOS
 // =============================================================
 
+/// Liquidación semanal de UNA obra. Un empleado puede aparecer en varias
+/// liquidaciones de la misma semana (una por obra). No hay unique.
 model LiquidacionSemanal {
   id              String            @id @default(uuid())
   semanaInicio    DateTime          @db.Date
   semanaFin       DateTime          @db.Date
+  obraId          String
   estado          EstadoLiquidacion @default(BORRADOR)
   totalBruto      Decimal           @default(0) @db.Decimal(14, 2)
   totalDescuentos Decimal           @default(0) @db.Decimal(14, 2)
+  totalAPagar     Decimal           @default(0) @db.Decimal(14, 2)
   totalPagado     Decimal           @default(0) @db.Decimal(14, 2)
   observaciones   String?
 
+  obra  Obra              @relation(fields: [obraId], references: [id])
   items LiquidacionItem[]
+  pagos LiquidacionPago[]
 
   cerradaAt    DateTime?
   cerradaPorId String?
@@ -651,28 +782,32 @@ model LiquidacionSemanal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([semanaInicio, semanaFin])
   @@index([estado])
+  @@index([obraId, semanaInicio])
+  @@index([semanaInicio, semanaFin])
 }
 
 model LiquidacionItem {
-  id             String    @id @default(uuid())
-  liquidacionId  String
-  beneficiarioId String? // null si solo matcheamos por nombreLibre durante la migración
-  nombreLibre    String // nombre tal como aparece en la planilla original
-  diasTrabajados Decimal   @default(0) @db.Decimal(6, 2)
-  valorDia       Decimal   @default(0) @db.Decimal(14, 2)
-  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
-  descuentos     Decimal   @default(0) @db.Decimal(14, 2)
-  aPagar         Decimal   @default(0) @db.Decimal(14, 2)
-  pagado         Boolean   @default(false)
-  fechaPago      DateTime? @db.Date
-  observaciones  String?
+  id                 String    @id @default(uuid())
+  liquidacionId      String
+  beneficiarioId     String? // null si solo matcheamos por nombreLibre durante la migración
+  nombreLibre        String // nombre tal como aparece en la planilla original
+  diasTrabajados     Decimal   @default(0) @db.Decimal(6, 2)
+  valorDia           Decimal   @default(0) @db.Decimal(14, 2) // jornal congelado
+  horasExtras        Decimal   @default(0) @db.Decimal(6, 2)
+  valorHoraExtra     Decimal   @default(0) @db.Decimal(14, 2) // congelado
+  subtotal           Decimal   @default(0) @db.Decimal(14, 2) // dias*valorDia + hs*valorHoraExtra
+  descuentos         Decimal   @default(0) @db.Decimal(14, 2) // descuentos manuales
+  prestamosAplicados Decimal   @default(0) @db.Decimal(14, 2) // suma de PrestamoAplicacion
+  aPagar             Decimal   @default(0) @db.Decimal(14, 2) // subtotal - descuentos - prestamosAplicados
+  pagado             Boolean   @default(false)
+  fechaPago          DateTime? @db.Date
+  observaciones      String?
 
   liquidacion  LiquidacionSemanal @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
   beneficiario Beneficiario?      @relation(fields: [beneficiarioId], references: [id])
 
-  dias LiquidacionDia[]
+  aplicacionesPrestamo PrestamoAplicacion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -681,23 +816,28 @@ model LiquidacionItem {
   @@index([beneficiarioId])
 }
 
-/// Un día de trabajo del empleado dentro de una liquidación, asociado a una obra.
-/// Permite repartir el pago semanal proporcionalmente por obra.
-model LiquidacionDia {
-  id       String   @id @default(uuid())
-  itemId   String
-  fecha    DateTime @db.Date
-  dias     Decimal  @default(1) @db.Decimal(4, 2) // 1 = día completo, 0.5 = medio día
-  obraId   String
-  etiqueta String? // "lluvia", "ausente", etc.
+/// Pago parcial o total de una liquidación. Cada pago genera un Movimiento.
+model LiquidacionPago {
+  id            String    @id @default(uuid())
+  liquidacionId String
+  movimientoId  String?   @unique
+  monto         Decimal   @db.Decimal(14, 2)
+  fecha         DateTime  @db.Date
+  medioPago     MedioPago
+  cajaId        String
+  observaciones String?
 
-  item LiquidacionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  obra Obra            @relation(fields: [obraId], references: [id])
+  liquidacion LiquidacionSemanal @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  movimiento  Movimiento?        @relation(fields: [movimientoId], references: [id])
+  caja        Caja               @relation(fields: [cajaId], references: [id])
+
+  createdById String?
+  createdBy   Usuario? @relation("LiqPagoCreadoPor", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
 
-  @@unique([itemId, fecha])
-  @@index([obraId, fecha])
+  @@index([liquidacionId])
+  @@index([cajaId, fecha])
 }
 
 model Vacacion {

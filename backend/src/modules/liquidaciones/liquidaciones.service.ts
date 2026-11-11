@@ -3,13 +3,14 @@ import {
   CotizacionTipo,
   EstadoLiquidacion,
   EstadoMovimiento,
+  EstadoPrestamoEmpleado,
   Moneda,
   OrigenMovimiento,
   Prisma,
   TipoMovimiento,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { arsAUsd, repartirMonto, usdAArs } from '@cardi/shared';
+import { arsAUsd, usdAArs } from '@cardi/shared';
 import { assertTransition } from '../../common/state-machines';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
@@ -22,13 +23,11 @@ import type {
 } from './dto/liquidaciones.dto';
 
 /**
- * Liquidaciones semanales.
- * Patrón tomado de `sistemaDistrito/backend/src/modules/liquidaciones/`,
- * adaptado al modelo de Cardi:
- * - Al pagar, se generan los egresos en el libro único con imputación
- *   proporcional a los días por obra (ver repartoPorObra).
- * - Se emite un recibo por item (PDF generado por RecibosService).
- * - Todo en una sola $transaction.
+ * Liquidaciones semanales v2.
+ * - Una liquidación por obra y semana. Los días son un número, no por día.
+ * - Items soportan hs. extras y aplicación de préstamos pendientes del empleado.
+ * - El pago puede ser total o parcial (LiquidacionPago). Cada pago genera un
+ *   Movimiento imputado 100% a la obra de la liquidación.
  */
 @Injectable()
 export class LiquidacionesService {
@@ -41,13 +40,17 @@ export class LiquidacionesService {
   findAll(filtros: FiltrosLiquidacionDto) {
     const where: Prisma.LiquidacionSemanalWhereInput = {};
     if (filtros.estado) where.estado = filtros.estado;
+    if (filtros.obraId) where.obraId = filtros.obraId;
     if (filtros.desde || filtros.hasta) {
       where.semanaInicio = { gte: filtros.desde, lte: filtros.hasta };
     }
     return this.prisma.liquidacionSemanal.findMany({
       where,
       orderBy: { semanaInicio: 'desc' },
-      include: { _count: { select: { items: true } } },
+      include: {
+        obra: { select: { id: true, nombre: true } },
+        _count: { select: { items: true, pagos: true } },
+      },
     });
   }
 
@@ -55,12 +58,24 @@ export class LiquidacionesService {
     const liq = await this.prisma.liquidacionSemanal.findUnique({
       where: { id },
       include: {
+        obra: { select: { id: true, nombre: true, tipo: true } },
         items: {
           include: {
             beneficiario: { select: { id: true, nombre: true, tipo: true } },
-            dias: { include: { obra: { select: { id: true, nombre: true } } } },
+            aplicacionesPrestamo: {
+              include: {
+                prestamo: { select: { id: true, fecha: true, monto: true, saldoPendiente: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
+        },
+        pagos: {
+          include: {
+            caja: { select: { id: true, nombre: true, moneda: true } },
+            movimiento: { select: { id: true, estado: true } },
+          },
+          orderBy: { fecha: 'desc' },
         },
       },
     });
@@ -69,80 +84,133 @@ export class LiquidacionesService {
   }
 
   async create(dto: CreateLiquidacionDto, userId: string) {
-    try {
-      const creada = await this.prisma.liquidacionSemanal.create({
-        data: {
-          semanaInicio: dto.semanaInicio,
-          semanaFin: dto.semanaFin,
-          observaciones: dto.observaciones,
-          estado: EstadoLiquidacion.BORRADOR,
-          createdById: userId,
-          updatedById: userId,
-        },
-      });
-      void this.audit.registrar({
-        usuarioId: userId,
-        accion: 'CREAR',
-        entidad: 'LiquidacionSemanal',
-        entidadId: creada.id,
-        observacion: `Semana ${creada.semanaInicio.toISOString().slice(0, 10)} → ${creada.semanaFin.toISOString().slice(0, 10)}`,
-      });
-      return creada;
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new BadRequestException('Ya existe una liquidación para esa semana');
-      }
-      throw err;
-    }
+    const obra = await this.prisma.obra.findUnique({ where: { id: dto.obraId } });
+    if (!obra || !obra.activo) throw new BadRequestException('Obra inválida o inactiva');
+
+    const creada = await this.prisma.liquidacionSemanal.create({
+      data: {
+        semanaInicio: dto.semanaInicio,
+        semanaFin: dto.semanaFin,
+        obraId: dto.obraId,
+        observaciones: dto.observaciones,
+        estado: EstadoLiquidacion.BORRADOR,
+        createdById: userId,
+        updatedById: userId,
+      },
+    });
+    void this.audit.registrar({
+      usuarioId: userId,
+      accion: 'CREAR',
+      entidad: 'LiquidacionSemanal',
+      entidadId: creada.id,
+      observacion: `Semana ${creada.semanaInicio.toISOString().slice(0, 10)} → ${creada.semanaFin.toISOString().slice(0, 10)} · ${obra.nombre}`,
+    });
+    return creada;
   }
 
   async upsertItem(liquidacionId: string, dto: UpsertItemDto, userId: string) {
-    const liq = await this.findOne(liquidacionId);
+    const liq = await this.prisma.liquidacionSemanal.findUnique({
+      where: { id: liquidacionId },
+      select: { id: true, estado: true },
+    });
+    if (!liq) throw new NotFoundException('Liquidación no encontrada');
     if (liq.estado !== EstadoLiquidacion.BORRADOR) {
       throw new BadRequestException('Solo se pueden editar liquidaciones en BORRADOR');
     }
 
-    // Validar días: suma <= 7
-    const totalDias = dto.dias.reduce((acc, d) => acc + Number(d.dias), 0);
-    if (totalDias <= 0) {
-      throw new BadRequestException('El total de días debe ser mayor a 0');
+    const dias = Number(dto.diasTrabajados);
+    const horasExtras = Number(dto.horasExtras ?? 0);
+    const valorDia = Number(dto.valorDia);
+    const valorHoraExtra = Number(dto.valorHoraExtra ?? 0);
+    const descuentos = Number(dto.descuentos ?? 0);
+
+    if (dias === 0 && horasExtras === 0) {
+      throw new BadRequestException('El item debe tener días u horas extra');
     }
 
-    const subtotal = totalDias * dto.valorDia;
-    const aPagar = Math.max(0, subtotal - dto.descuentos);
+    const subtotal = dias * valorDia + horasExtras * valorHoraExtra;
+
+    const prestamosAplicar = dto.prestamosAplicar ?? [];
+    const prestamosAplicados = prestamosAplicar.reduce((acc, p) => acc + Number(p.monto), 0);
+
+    const aPagar = Math.max(0, subtotal - descuentos - prestamosAplicados);
 
     return this.prisma.$transaction(async (tx) => {
-      // Elimino los días previos para simplificar
+      // Si es update, revierto aplicaciones previas (suma los montos de vuelta a los préstamos)
       if (dto.id) {
-        await tx.liquidacionDia.deleteMany({ where: { itemId: dto.id } });
+        await this.revertirAplicacionesItem(tx, dto.id);
+      }
+
+      // Valido cada préstamo: existe, pertenece al beneficiario, monto <= saldoPendiente
+      if (prestamosAplicar.length > 0) {
+        if (!dto.beneficiarioId) {
+          throw new BadRequestException('Para aplicar préstamos, el item debe tener beneficiario');
+        }
+        for (const ap of prestamosAplicar) {
+          const prestamo = await tx.prestamoEmpleado.findUnique({ where: { id: ap.prestamoId } });
+          if (!prestamo) {
+            throw new BadRequestException(`Préstamo ${ap.prestamoId} no encontrado`);
+          }
+          if (prestamo.beneficiarioId !== dto.beneficiarioId) {
+            throw new BadRequestException('El préstamo no pertenece al empleado del item');
+          }
+          if (prestamo.estado === EstadoPrestamoEmpleado.ANULADO) {
+            throw new BadRequestException('No se puede aplicar un préstamo anulado');
+          }
+          if (Number(prestamo.saldoPendiente) < Number(ap.monto)) {
+            throw new BadRequestException(
+              `Monto a aplicar ($${ap.monto}) supera el saldo pendiente ($${prestamo.saldoPendiente}) del préstamo`,
+            );
+          }
+        }
       }
 
       const data: Prisma.LiquidacionItemUncheckedCreateInput = {
         liquidacionId,
         beneficiarioId: dto.beneficiarioId ?? null,
         nombreLibre: dto.nombreLibre.trim(),
-        diasTrabajados: new Prisma.Decimal(totalDias.toFixed(2)),
-        valorDia: new Prisma.Decimal(dto.valorDia.toFixed(2)),
+        diasTrabajados: new Prisma.Decimal(dias.toFixed(2)),
+        valorDia: new Prisma.Decimal(valorDia.toFixed(2)),
+        horasExtras: new Prisma.Decimal(horasExtras.toFixed(2)),
+        valorHoraExtra: new Prisma.Decimal(valorHoraExtra.toFixed(2)),
         subtotal: new Prisma.Decimal(subtotal.toFixed(2)),
-        descuentos: new Prisma.Decimal(dto.descuentos.toFixed(2)),
+        descuentos: new Prisma.Decimal(descuentos.toFixed(2)),
+        prestamosAplicados: new Prisma.Decimal(prestamosAplicados.toFixed(2)),
         aPagar: new Prisma.Decimal(aPagar.toFixed(2)),
         observaciones: dto.observaciones,
-        dias: {
-          create: dto.dias.map((d) => ({
-            fecha: d.fecha,
-            dias: new Prisma.Decimal(Number(d.dias).toFixed(2)),
-            obraId: d.obraId,
-            etiqueta: d.etiqueta,
-          })),
-        },
       };
 
       const item = dto.id
-        ? await tx.liquidacionItem.update({
-            where: { id: dto.id },
-            data: { ...data, dias: { deleteMany: {}, create: data.dias!.create } } as unknown as Prisma.LiquidacionItemUpdateInput,
-          })
+        ? await tx.liquidacionItem.update({ where: { id: dto.id }, data })
         : await tx.liquidacionItem.create({ data });
+
+      // Aplico los préstamos nuevos
+      for (const ap of prestamosAplicar) {
+        await tx.prestamoAplicacion.create({
+          data: {
+            prestamoId: ap.prestamoId,
+            liquidacionItemId: item.id,
+            monto: new Prisma.Decimal(Number(ap.monto).toFixed(2)),
+          },
+        });
+        const prestamo = await tx.prestamoEmpleado.findUnique({
+          where: { id: ap.prestamoId },
+          select: { saldoPendiente: true },
+        });
+        const nuevoSaldo = new Prisma.Decimal(prestamo!.saldoPendiente).minus(
+          new Prisma.Decimal(Number(ap.monto).toFixed(2)),
+        );
+        await tx.prestamoEmpleado.update({
+          where: { id: ap.prestamoId },
+          data: {
+            saldoPendiente: nuevoSaldo,
+            estado: nuevoSaldo.lte(0)
+              ? EstadoPrestamoEmpleado.SALDADO
+              : EstadoPrestamoEmpleado.VIGENTE,
+            updatedById: userId,
+          },
+        });
+      }
 
       await this.recalcularTotales(tx, liquidacionId, userId);
       return item;
@@ -159,6 +227,7 @@ export class LiquidacionesService {
       throw new BadRequestException('Solo se pueden eliminar items de liquidaciones en BORRADOR');
     }
     return this.prisma.$transaction(async (tx) => {
+      await this.revertirAplicacionesItem(tx, itemId);
       await tx.liquidacionItem.delete({ where: { id: itemId } });
       await this.recalcularTotales(tx, item.liquidacionId, userId);
       return { ok: true };
@@ -173,10 +242,10 @@ export class LiquidacionesService {
       throw new BadRequestException('No se puede aprobar una liquidación sin items');
     }
     if (nuevo === EstadoLiquidacion.CERRADA) {
-      const sinPagar = liq.items.filter((i) => !i.pagado);
-      if (sinPagar.length > 0) {
+      const saldo = new Prisma.Decimal(liq.totalAPagar).minus(new Prisma.Decimal(liq.totalPagado));
+      if (saldo.gt(0)) {
         throw new BadRequestException(
-          `No se puede cerrar: hay ${sinPagar.length} empleado(s) sin pagar`,
+          `No se puede cerrar: saldo pendiente $${saldo.toFixed(2)}`,
         );
       }
     }
@@ -201,33 +270,47 @@ export class LiquidacionesService {
   }
 
   /**
-   * Paga la liquidación: por cada item sin pagar (o los que vienen en `itemIds`),
-   * genera un egreso en el libro con imputación proporcional a los días por obra
-   * y un recibo asociado. Al terminar, si quedan todos los items pagados,
-   * mueve la liquidación a PAGADA.
+   * Paga la liquidación (parcial o total).
+   * - Si no se pasa monto, se paga el saldo pendiente completo.
+   * - Crea LiquidacionPago + Movimiento (EGRESO) imputado 100% a la obra.
+   * - Si el saldo se cierra, pasa a PAGADA y marca los items como pagados.
+   * - Si queda saldo, pasa a PAGADA_PARCIAL.
    */
   async pagar(liquidacionId: string, dto: PagarLiquidacionDto, userId: string) {
     const liq = await this.findOne(liquidacionId);
-    if (
-      liq.estado !== EstadoLiquidacion.APROBADA &&
-      liq.estado !== EstadoLiquidacion.BORRADOR &&
-      liq.estado !== EstadoLiquidacion.PAGADA
-    ) {
+    const estadosOk: EstadoLiquidacion[] = [
+      EstadoLiquidacion.APROBADA,
+      EstadoLiquidacion.PAGADA_PARCIAL,
+    ];
+    if (!estadosOk.includes(liq.estado)) {
       throw new BadRequestException(
         `No se puede pagar una liquidación en estado ${liq.estado}`,
       );
     }
+
+    const totalAPagar = new Prisma.Decimal(liq.totalAPagar);
+    const totalPagado = new Prisma.Decimal(liq.totalPagado);
+    const saldoPendiente = totalAPagar.minus(totalPagado);
+    if (saldoPendiente.lte(0)) {
+      throw new BadRequestException('La liquidación ya está completamente pagada');
+    }
+
+    const montoAPagar = dto.monto
+      ? new Prisma.Decimal(Number(dto.monto).toFixed(2))
+      : saldoPendiente;
+    if (montoAPagar.lte(0)) {
+      throw new BadRequestException('El monto a pagar debe ser mayor a 0');
+    }
+    if (montoAPagar.gt(saldoPendiente)) {
+      throw new BadRequestException(
+        `El monto ($${montoAPagar.toFixed(2)}) supera el saldo pendiente ($${saldoPendiente.toFixed(2)})`,
+      );
+    }
+
     const caja = await this.prisma.caja.findUnique({ where: { id: dto.cajaId } });
     if (!caja || !caja.activo) throw new BadRequestException('Caja inválida o inactiva');
 
-    const itemsAPagar = liq.items.filter(
-      (i) => !i.pagado && (!dto.itemIds || dto.itemIds.includes(i.id)) && Number(i.aPagar) > 0,
-    );
-    if (itemsAPagar.length === 0) {
-      throw new BadRequestException('No hay items pendientes a pagar');
-    }
-
-    // Cotización del día (se congela en cada movimiento)
+    // Cotización del día (congela el movimiento)
     const ultima = await this.cotizaciones.ultimaCotizacion('BLUE');
     const cotizacionNum = ultima ? Number(ultima.venta) : 1;
     const cotizacionTipo: CotizacionTipo = ultima ? CotizacionTipo.BLUE_VENTA : CotizacionTipo.MANUAL;
@@ -235,108 +318,96 @@ export class LiquidacionesService {
     const fechaPago = dto.fechaPago ?? new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      const movimientosCreados: string[] = [];
+      const grupoId = randomUUID();
+      const montoNum = Number(montoAPagar.toFixed(2));
+      const montoArs =
+        caja.moneda === Moneda.ARS ? montoNum.toFixed(2) : usdAArs(montoNum, cotizacionNum).toFixed(2);
+      const montoUsd =
+        caja.moneda === Moneda.USD ? montoNum.toFixed(2) : arsAUsd(montoNum, cotizacionNum).toFixed(2);
+
+      // Movimiento EGRESO imputado 100% a la obra de la liquidación
+      const mov = await tx.movimiento.create({
+        data: {
+          tipo: TipoMovimiento.EGRESO,
+          fecha: fechaPago,
+          cajaId: caja.id,
+          moneda: caja.moneda,
+          monto: montoAPagar,
+          medioPago: dto.medioPago,
+          descripcion: dto.observaciones ?? `Pago liquidación · ${liq.obra.nombre}`,
+          cotizacion: new Prisma.Decimal(cotizacionNum),
+          cotizacionTipo,
+          montoArs: new Prisma.Decimal(montoArs),
+          montoUsd: new Prisma.Decimal(montoUsd),
+          categoriaId: dto.categoriaId ?? null,
+          grupoId,
+          origen: OrigenMovimiento.LIQUIDACION,
+          origenId: liq.id,
+          estado: EstadoMovimiento.CONFIRMADO,
+          createdById: userId,
+          updatedById: userId,
+          imputaciones: {
+            create: [
+              {
+                obraId: liq.obraId,
+                monto: montoAPagar,
+                porcentaje: new Prisma.Decimal(100),
+              },
+            ],
+          },
+        },
+      });
+
+      // LiquidacionPago vinculado al movimiento
+      await tx.liquidacionPago.create({
+        data: {
+          liquidacionId,
+          movimientoId: mov.id,
+          monto: montoAPagar,
+          fecha: fechaPago,
+          medioPago: dto.medioPago,
+          cajaId: caja.id,
+          observaciones: dto.observaciones,
+          createdById: userId,
+        },
+      });
+
+      const nuevoTotalPagado = totalPagado.plus(montoAPagar);
+      const seCompleto = nuevoTotalPagado.gte(totalAPagar);
+      const nuevoEstado = seCompleto
+        ? EstadoLiquidacion.PAGADA
+        : EstadoLiquidacion.PAGADA_PARCIAL;
+
+      await tx.liquidacionSemanal.update({
+        where: { id: liquidacionId },
+        data: {
+          totalPagado: nuevoTotalPagado,
+          estado: nuevoEstado,
+          updatedById: userId,
+        },
+      });
+
+      // Si se completó el pago, marcar items pagados y generar recibos
       const recibosCreados: string[] = [];
-
-      for (const item of itemsAPagar) {
-        // Reparto por obra según días
-        const diasPorObra = new Map<string, number>();
-        for (const dia of item.dias) {
-          diasPorObra.set(dia.obraId, (diasPorObra.get(dia.obraId) ?? 0) + Number(dia.dias));
-        }
-        const totalDias = Number(item.diasTrabajados);
-        const porcentajes: Array<{ obraId: string; porcentaje: number }> = [...diasPorObra.entries()]
-          .map(([obraId, dias]) => ({
-            obraId,
-            porcentaje: Math.round((dias / totalDias) * 10000) / 100, // 2 decimales
-          }));
-
-        // Normalizo porcentajes a 100 (la última línea absorbe la diferencia)
-        const sumaPct = porcentajes.reduce((acc, p) => acc + p.porcentaje, 0);
-        porcentajes[porcentajes.length - 1].porcentaje += Number((100 - sumaPct).toFixed(4));
-
-        const aPagar = Number(item.aPagar);
-        const imputaciones = repartirMonto(
-          aPagar,
-          porcentajes.map((p) => ({ obraId: p.obraId, porcentaje: p.porcentaje })),
-        );
-
-        // Equivalente ARS/USD
-        const montoArs =
-          caja.moneda === Moneda.ARS ? aPagar.toFixed(2) : usdAArs(aPagar, cotizacionNum).toFixed(2);
-        const montoUsd =
-          caja.moneda === Moneda.USD ? aPagar.toFixed(2) : arsAUsd(aPagar, cotizacionNum).toFixed(2);
-
-        const grupoId = randomUUID();
-
-        // Recibo (sin PDF por ahora — RecibosService lo genera después si está)
-        const recibo = await tx.recibo.create({
-          data: {
-            fecha: fechaPago,
-            beneficiarioId: item.beneficiarioId,
-            monto: item.aPagar,
-            moneda: caja.moneda,
-            concepto: `Pago semanal · ${liq.semanaInicio.toISOString().slice(0, 10)} al ${liq.semanaFin.toISOString().slice(0, 10)} · ${item.nombreLibre}`,
-            generadoPorId: userId,
-          },
-        });
-
-        // Movimiento (EGRESO) con imputaciones
-        const mov = await tx.movimiento.create({
-          data: {
-            tipo: TipoMovimiento.EGRESO,
-            fecha: fechaPago,
-            cajaId: caja.id,
-            moneda: caja.moneda,
-            monto: item.aPagar,
-            medioPago: dto.medioPago,
-            descripcion: `Liquidación semanal · ${item.nombreLibre}`,
-            cotizacion: new Prisma.Decimal(cotizacionNum),
-            cotizacionTipo,
-            montoArs: new Prisma.Decimal(montoArs),
-            montoUsd: new Prisma.Decimal(montoUsd),
-            beneficiarioId: item.beneficiarioId,
-            categoriaId: dto.categoriaId ?? null,
-            reciboId: recibo.id,
-            grupoId,
-            origen: OrigenMovimiento.LIQUIDACION,
-            origenId: liq.id,
-            estado: EstadoMovimiento.CONFIRMADO,
-            createdById: userId,
-            updatedById: userId,
-            imputaciones: {
-              create: imputaciones.map((i) => ({
-                obraId: i.obraId,
-                monto: new Prisma.Decimal(i.monto.toString()),
-                porcentaje: new Prisma.Decimal(i.porcentaje.toString()),
-              })),
-            },
-          },
-        });
-
-        // Marco el item como pagado
-        await tx.liquidacionItem.update({
-          where: { id: item.id },
+      if (seCompleto) {
+        await tx.liquidacionItem.updateMany({
+          where: { liquidacionId },
           data: { pagado: true, fechaPago },
         });
-
-        movimientosCreados.push(mov.id);
-        recibosCreados.push(recibo.id);
-      }
-
-      // Si ya no quedan items pendientes, muevo la liquidación a PAGADA
-      const pendientes = await tx.liquidacionItem.count({
-        where: { liquidacionId, pagado: false, aPagar: { gt: 0 } },
-      });
-      if (pendientes === 0 && liq.estado !== EstadoLiquidacion.PAGADA) {
-        await tx.liquidacionSemanal.update({
-          where: { id: liquidacionId },
-          data: {
-            estado: EstadoLiquidacion.PAGADA,
-            totalPagado: liq.totalBruto, // aPagar total
-            updatedById: userId,
-          },
-        });
+        for (const item of liq.items) {
+          if (Number(item.aPagar) <= 0) continue;
+          const recibo = await tx.recibo.create({
+            data: {
+              fecha: fechaPago,
+              beneficiarioId: item.beneficiarioId,
+              monto: item.aPagar,
+              moneda: caja.moneda,
+              concepto: `Pago semanal · ${liq.semanaInicio.toISOString().slice(0, 10)} al ${liq.semanaFin.toISOString().slice(0, 10)} · ${liq.obra.nombre} · ${item.nombreLibre}`,
+              generadoPorId: userId,
+            },
+          });
+          recibosCreados.push(recibo.id);
+        }
       }
 
       void this.audit.registrar({
@@ -344,13 +415,44 @@ export class LiquidacionesService {
         accion: 'ACTUALIZAR',
         entidad: 'LiquidacionSemanal',
         entidadId: liquidacionId,
-        observacion: `Pago · ${itemsAPagar.length} empleado(s) · ${movimientosCreados.length} movimientos`,
+        observacion: `Pago $${montoAPagar.toFixed(2)} · ${seCompleto ? 'cerrada' : 'parcial'}`,
       });
-      return { movimientosCreados, recibosCreados };
+
+      return {
+        movimientoId: mov.id,
+        montoPagado: montoAPagar.toFixed(2),
+        saldoPendiente: totalAPagar.minus(nuevoTotalPagado).toFixed(2),
+        estado: nuevoEstado,
+        recibosCreados,
+      };
     });
   }
 
   // ---------- helpers ----------
+
+  private async revertirAplicacionesItem(tx: Prisma.TransactionClient, itemId: string) {
+    const aplicaciones = await tx.prestamoAplicacion.findMany({
+      where: { liquidacionItemId: itemId },
+    });
+    for (const ap of aplicaciones) {
+      const prestamo = await tx.prestamoEmpleado.findUnique({
+        where: { id: ap.prestamoId },
+        select: { saldoPendiente: true, monto: true },
+      });
+      if (!prestamo) continue;
+      const nuevoSaldo = new Prisma.Decimal(prestamo.saldoPendiente).plus(ap.monto);
+      await tx.prestamoEmpleado.update({
+        where: { id: ap.prestamoId },
+        data: {
+          saldoPendiente: nuevoSaldo,
+          estado: nuevoSaldo.gt(0)
+            ? EstadoPrestamoEmpleado.VIGENTE
+            : EstadoPrestamoEmpleado.SALDADO,
+        },
+      });
+    }
+    await tx.prestamoAplicacion.deleteMany({ where: { liquidacionItemId: itemId } });
+  }
 
   private async recalcularTotales(
     tx: Prisma.TransactionClient,
@@ -359,13 +461,17 @@ export class LiquidacionesService {
   ) {
     const items = await tx.liquidacionItem.findMany({ where: { liquidacionId } });
     const totalBruto = items.reduce((acc, i) => acc.add(i.subtotal), new Prisma.Decimal(0));
-    const totalDescuentos = items.reduce((acc, i) => acc.add(i.descuentos), new Prisma.Decimal(0));
+    const totalDescuentos = items.reduce(
+      (acc, i) => acc.add(i.descuentos).add(i.prestamosAplicados),
+      new Prisma.Decimal(0),
+    );
+    const totalAPagar = items.reduce((acc, i) => acc.add(i.aPagar), new Prisma.Decimal(0));
     const totalPagado = items
       .filter((i) => i.pagado)
       .reduce((acc, i) => acc.add(i.aPagar), new Prisma.Decimal(0));
     await tx.liquidacionSemanal.update({
       where: { id: liquidacionId },
-      data: { totalBruto, totalDescuentos, totalPagado, updatedById: userId },
+      data: { totalBruto, totalDescuentos, totalAPagar, totalPagado, updatedById: userId },
     });
   }
 }
