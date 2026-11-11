@@ -1,6 +1,5 @@
 import { NavLink } from 'react-router-dom';
 import {
-  Home,
   Wallet,
   Building2,
   Users,
@@ -8,19 +7,14 @@ import {
   FileBarChart2,
   Receipt,
   Tag,
-  Banknote,
   FileCheck2,
   FileText,
-  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from './Logo';
 
 const NAV = [
-  { to: '/', label: 'Inicio', icon: Home, end: true },
-  { to: '/movimientos', label: 'Movimientos', icon: Wallet },
-  { to: '/cheques', label: 'Cheques', icon: ScrollText },
-  { to: '/cajas', label: 'Cajas', icon: Banknote },
+  { to: '/', label: 'Billetera', icon: Wallet, end: true },
   { to: '/obras', label: 'Obras', icon: Building2 },
   { to: '/beneficiarios', label: 'Beneficiarios', icon: Users },
   { to: '/categorias', label: 'Categorías', icon: Tag },
