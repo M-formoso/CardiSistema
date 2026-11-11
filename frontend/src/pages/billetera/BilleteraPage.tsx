@@ -175,10 +175,10 @@ export function BilleteraPage() {
   }, []);
 
   return (
-    <div className="-m-6 lg:-m-8">
+    <div className="-m-4 sm:-m-6 lg:-m-8">
       {/* ==================== HERO ==================== */}
       <div
-        className="relative bg-accent text-white px-8 lg:px-12 pt-6 pb-8"
+        className="relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8"
         style={{
           backgroundImage:
             'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
@@ -313,7 +313,7 @@ export function BilleteraPage() {
       </div>
 
       {/* ==================== BODY ==================== */}
-      <div className="px-8 lg:px-12 py-6 space-y-6">
+      <div className="px-4 sm:px-8 lg:px-12 py-6 space-y-6">
         {/* Saldos por caja */}
         <div>
           <h2 className="text-sm font-semibold text-muted mb-2 uppercase tracking-wider">
@@ -342,14 +342,14 @@ export function BilleteraPage() {
 
         {/* Movimientos */}
         <div>
-          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-2 gap-3">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Movimientos
             </h2>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 w-full lg:w-auto">
               <Combobox
                 size="sm"
-                className="w-36"
+                className="w-full lg:w-36"
                 options={[
                   { value: 'INGRESO', label: 'Ingresos' },
                   { value: 'EGRESO', label: 'Egresos' },
@@ -361,7 +361,7 @@ export function BilleteraPage() {
               />
               <Combobox
                 size="sm"
-                className="w-48"
+                className="w-full lg:w-48"
                 options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
                 value={obraId}
                 onChange={setObraId}
@@ -371,7 +371,7 @@ export function BilleteraPage() {
               />
               <Combobox
                 size="sm"
-                className="w-52"
+                className="w-full lg:w-52"
                 options={categorias.map((c) => ({
                   value: c.id,
                   label: c.nombre,
@@ -383,21 +383,21 @@ export function BilleteraPage() {
                 searchPlaceholder="Buscar categoría…"
                 emptyText="Ninguna categoría coincide"
               />
-              <div className="relative">
+              <div className="relative col-span-2 sm:col-span-3 lg:col-span-1">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
                 <Input
                   data-mov-search
                   placeholder="Buscar en descripción… (/)"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  className="pl-7 h-8 text-xs w-60"
+                  className="pl-7 h-8 text-xs w-full lg:w-60"
                 />
               </div>
               {(tipo || obraId || categoriaId || q) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 text-xs"
+                  className="h-8 text-xs col-span-2 sm:col-span-3 lg:col-span-1"
                   onClick={() => {
                     setTipo('');
                     setObraId('');
