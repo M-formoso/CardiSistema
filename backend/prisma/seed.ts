@@ -93,7 +93,9 @@ async function seedAdmin() {
   return prisma.usuario.upsert({
     where: { username },
     create: { username, email, nombre, passwordHash, rol: RolUsuario.ADMIN, activo: true },
-    update: { email, nombre, rol: RolUsuario.ADMIN, activo: true },
+    // También actualiza passwordHash: si cambiás ADMIN_PASSWORD y re-corrés
+    // el seed, queda aplicada la nueva clave.
+    update: { email, nombre, passwordHash, rol: RolUsuario.ADMIN, activo: true },
   });
 }
 
