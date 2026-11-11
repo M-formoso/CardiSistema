@@ -43,12 +43,12 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center items-center pt-10 pb-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center items-center pt-10 pb-6">
           <img
             src="/logo.png"
             alt="Cardi"
-            className="h-40 w-auto"
+            className="h-64 w-auto"
           />
         </CardHeader>
         <CardContent>
