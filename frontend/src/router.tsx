@@ -7,6 +7,7 @@ import { PagosPage } from '@/pages/PagosPage';
 import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
 import { UsuariosPage } from '@/pages/UsuariosPage';
 import { ReportesPage } from '@/pages/ReportesPage';
+import { ObraDetallePage } from '@/pages/reportes/ObraDetallePage';
 import { LiquidacionDetallePage } from '@/pages/liquidaciones/LiquidacionDetallePage';
 
 export const router = createBrowserRouter([
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
 
           // Reportes
           { path: 'reportes', element: <ReportesPage /> },
+          { path: 'reportes/obras/:id', element: <ObraDetallePage /> },
 
           // Usuarios (ABM, solo ADMIN)
           { path: 'usuarios', element: <UsuariosPage /> },

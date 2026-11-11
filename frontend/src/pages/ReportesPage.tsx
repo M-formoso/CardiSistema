@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Loader2 } from 'lucide-react';
+import { ArrowRight, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { reportesService } from '@/services/reportesService';
 import { formatearMonto } from '@/lib/formatters';
 
 export function ReportesPage() {
+  const nav = useNavigate();
   const [desde, setDesde] = useState('2026-01-01');
   const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -63,7 +65,10 @@ export function ReportesPage() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold mb-2">Gasto por obra</h2>
+        <div className="flex items-end justify-between mb-2 gap-2">
+          <h2 className="text-lg font-semibold">Gasto por obra</h2>
+          <span className="text-xs text-muted">Clic en una obra para ver detalle con gráficos</span>
+        </div>
         <div className="rounded-lg border border-border bg-card">
           <Table>
             <TableHeader>
@@ -97,8 +102,17 @@ export function ReportesPage() {
               {porObra.map((o) => {
                 const pct = o.porcentajeConsumido ? Number(o.porcentajeConsumido) : null;
                 return (
-                  <TableRow key={o.obraId}>
-                    <TableCell className="font-medium">{o.nombre}</TableCell>
+                  <TableRow
+                    key={o.obraId}
+                    className="cursor-pointer"
+                    onClick={() => nav(`/reportes/obras/${o.obraId}?desde=${desde}&hasta=${hasta}`)}
+                  >
+                    <TableCell className="font-medium">
+                      <span className="flex items-center gap-1 group">
+                        {o.nombre}
+                        <ArrowRight className="h-3 w-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="muted">{o.tipo}</Badge>
                     </TableCell>

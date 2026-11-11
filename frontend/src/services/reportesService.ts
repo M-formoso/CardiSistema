@@ -22,13 +22,58 @@ export type GastoPorCategoria = {
   cantidad: number;
 };
 
+export type GastoPorMes = {
+  mes: string; // "2026-11"
+  ars: string;
+  usd: string;
+  cantidad: number;
+};
+
+export type DetalleObraItem = {
+  fecha: string;
+  descripcion: string | null;
+  beneficiario: string | null;
+  categoria: string | null;
+  caja: string;
+  moneda: 'ARS' | 'USD';
+  monto: string;
+  montoArs: string;
+  montoUsd: string;
+};
+
+export type DetalleObra = {
+  obra: {
+    id: string;
+    nombre: string;
+    tipo: string;
+    estado: string;
+    comitente: string | null;
+    constructora: string | null;
+    ubicacion: string | null;
+    montoContratado: string | null;
+    monedaContrato: 'ARS' | 'USD' | null;
+    activo: boolean;
+  };
+  totales: { ars: string; usd: string };
+  items: DetalleObraItem[];
+  totalItems: number;
+};
+
 export const reportesService = {
   gastoPorObra: async (params: { desde?: string; hasta?: string } = {}) =>
     (await apiClient.get<GastoPorObra[]>('/reportes/gasto-por-obra', { params })).data,
   gastoPorCategoria: async (params: { desde?: string; hasta?: string } = {}) =>
     (await apiClient.get<GastoPorCategoria[]>('/reportes/gasto-por-categoria', { params })).data,
   detalleObra: async (obraId: string, params: { desde?: string; hasta?: string } = {}) =>
-    (await apiClient.get(`/reportes/obras/${obraId}/detalle`, { params })).data,
+    (await apiClient.get<DetalleObra>(`/reportes/obras/${obraId}/detalle`, { params })).data,
+  obraPorCategoria: async (obraId: string, params: { desde?: string; hasta?: string } = {}) =>
+    (
+      await apiClient.get<GastoPorCategoria[]>(`/reportes/obras/${obraId}/por-categoria`, {
+        params,
+      })
+    ).data,
+  obraPorMes: async (obraId: string, params: { desde?: string; hasta?: string } = {}) =>
+    (await apiClient.get<GastoPorMes[]>(`/reportes/obras/${obraId}/por-mes`, { params })).data,
 
   async downloadGastoPorObraExcel(params: { desde?: string; hasta?: string } = {}) {
     const res = await apiClient.get('/reportes/gasto-por-obra.xlsx', {

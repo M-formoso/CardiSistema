@@ -33,6 +33,32 @@ export class ReportesController {
     return this.svc.detalleObra(id, { desde: parseDate(desde), hasta: parseDate(hasta) });
   }
 
+  @Get('obras/:id/por-categoria')
+  @RequirePermission('reportes', 'ver')
+  gastoObraPorCategoria(
+    @Param('id') id: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+  ) {
+    return this.svc.gastoObraPorCategoria(id, {
+      desde: parseDate(desde),
+      hasta: parseDate(hasta),
+    });
+  }
+
+  @Get('obras/:id/por-mes')
+  @RequirePermission('reportes', 'ver')
+  gastoObraPorMes(
+    @Param('id') id: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+  ) {
+    return this.svc.gastoObraPorMes(id, {
+      desde: parseDate(desde),
+      hasta: parseDate(hasta),
+    });
+  }
+
   @Get('gasto-por-obra.xlsx')
   @Header(
     'Content-Type',

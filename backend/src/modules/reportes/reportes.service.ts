@@ -111,6 +111,123 @@ export class ReportesService {
   }
 
   /**
+   * Gasto de UNA obra desglosado por categoría.
+   */
+  async gastoObraPorCategoria(obraId: string, filtros: FiltroPeriodo = {}) {
+    const obra = await this.prisma.obra.findUnique({ where: { id: obraId } });
+    if (!obra) throw new Error('Obra no encontrada');
+
+    const imputaciones = await this.prisma.imputacion.findMany({
+      where: {
+        obraId,
+        movimiento: {
+          tipo: TipoMovimiento.EGRESO,
+          estado: { in: [EstadoMovimiento.CONFIRMADO, EstadoMovimiento.REVERSA] },
+          fecha: { gte: filtros.desde, lte: filtros.hasta },
+        },
+      },
+      include: {
+        movimiento: {
+          select: {
+            estado: true,
+            monto: true,
+            montoArs: true,
+            montoUsd: true,
+            categoria: { select: { id: true, codigo: true, nombre: true } },
+          },
+        },
+      },
+    });
+
+    const map = new Map<
+      string,
+      { id: string; codigo: string; nombre: string; ars: Prisma.Decimal; usd: Prisma.Decimal; cantidad: number }
+    >();
+    const SIN_CATEGORIA = '__sin__';
+    for (const imp of imputaciones) {
+      const signo = imp.movimiento.estado === EstadoMovimiento.REVERSA ? -1 : 1;
+      const cat = imp.movimiento.categoria;
+      const key = cat?.id ?? SIN_CATEGORIA;
+      if (!map.has(key)) {
+        map.set(key, {
+          id: cat?.id ?? SIN_CATEGORIA,
+          codigo: cat?.codigo ?? '—',
+          nombre: cat?.nombre ?? 'Sin categoría',
+          ars: new Prisma.Decimal(0),
+          usd: new Prisma.Decimal(0),
+          cantidad: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      const parteArs = this.calcularParteArs(imp.monto, imp.movimiento.monto, imp.movimiento.montoArs);
+      const parteUsd = this.calcularParteUsd(imp.monto, imp.movimiento.monto, imp.movimiento.montoUsd);
+      entry.ars = entry.ars.add(new Prisma.Decimal(parteArs).mul(signo));
+      entry.usd = entry.usd.add(new Prisma.Decimal(parteUsd).mul(signo));
+      entry.cantidad += signo;
+    }
+
+    return [...map.values()]
+      .map((e) => ({
+        categoriaId: e.id,
+        codigo: e.codigo,
+        nombre: e.nombre,
+        ars: e.ars.toFixed(2),
+        usd: e.usd.toFixed(2),
+        cantidad: e.cantidad,
+      }))
+      .sort((a, b) => Number(b.ars) - Number(a.ars));
+  }
+
+  /**
+   * Gasto mensual de una obra en el período dado (para gráfico de evolución).
+   */
+  async gastoObraPorMes(obraId: string, filtros: FiltroPeriodo = {}) {
+    const obra = await this.prisma.obra.findUnique({ where: { id: obraId } });
+    if (!obra) throw new Error('Obra no encontrada');
+
+    const imputaciones = await this.prisma.imputacion.findMany({
+      where: {
+        obraId,
+        movimiento: {
+          tipo: TipoMovimiento.EGRESO,
+          estado: { in: [EstadoMovimiento.CONFIRMADO, EstadoMovimiento.REVERSA] },
+          fecha: { gte: filtros.desde, lte: filtros.hasta },
+        },
+      },
+      include: {
+        movimiento: {
+          select: { estado: true, monto: true, montoArs: true, montoUsd: true, fecha: true },
+        },
+      },
+    });
+
+    const map = new Map<string, { ars: Prisma.Decimal; usd: Prisma.Decimal; cantidad: number }>();
+    for (const imp of imputaciones) {
+      const signo = imp.movimiento.estado === EstadoMovimiento.REVERSA ? -1 : 1;
+      const d = new Date(imp.movimiento.fecha);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (!map.has(key)) {
+        map.set(key, { ars: new Prisma.Decimal(0), usd: new Prisma.Decimal(0), cantidad: 0 });
+      }
+      const entry = map.get(key)!;
+      const parteArs = this.calcularParteArs(imp.monto, imp.movimiento.monto, imp.movimiento.montoArs);
+      const parteUsd = this.calcularParteUsd(imp.monto, imp.movimiento.monto, imp.movimiento.montoUsd);
+      entry.ars = entry.ars.add(new Prisma.Decimal(parteArs).mul(signo));
+      entry.usd = entry.usd.add(new Prisma.Decimal(parteUsd).mul(signo));
+      entry.cantidad += signo;
+    }
+
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, v]) => ({
+        mes,
+        ars: v.ars.toFixed(2),
+        usd: v.usd.toFixed(2),
+        cantidad: v.cantidad,
+      }));
+  }
+
+  /**
    * Detalle de movimientos imputados a una obra en un período.
    */
   async detalleObra(obraId: string, filtros: FiltroPeriodo = {}) {
