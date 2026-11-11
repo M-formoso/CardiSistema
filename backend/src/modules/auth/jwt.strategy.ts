@@ -7,7 +7,7 @@ import type { AuthenticatedUser } from '../../common/types/authenticated-user';
 
 type JwtPayload = {
   sub: string;
-  email: string;
+  username: string;
   rol: string;
 };
 
@@ -36,8 +36,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
     return {
       id: usuario.id,
-      email: usuario.email,
+      username: usuario.username,
       nombre: usuario.nombre,
+      email: usuario.email,
       rol: usuario.rol,
       permisos: new Set(
         usuario.permisos

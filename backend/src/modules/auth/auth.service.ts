@@ -25,15 +25,17 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async login(email: string, password: string, meta: RequestMeta) {
-    const usuario = await this.prisma.usuario.findUnique({ where: { email } });
+  async login(username: string, password: string, meta: RequestMeta) {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { username: username.trim().toLowerCase() },
+    });
     if (!usuario || !usuario.activo) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
     const ok = await bcrypt.compare(password, usuario.passwordHash);
     if (!ok) throw new UnauthorizedException('Credenciales inválidas');
 
-    const accessToken = this.signAccessToken(usuario.id, usuario.email, usuario.rol);
+    const accessToken = this.signAccessToken(usuario.id, usuario.username, usuario.rol);
     const refresh = await this.issueRefreshToken(usuario.id, meta);
 
     return {
@@ -41,8 +43,9 @@ export class AuthService {
       refreshToken: refresh.plain,
       usuario: {
         id: usuario.id,
-        email: usuario.email,
+        username: usuario.username,
         nombre: usuario.nombre,
+        email: usuario.email,
         rol: usuario.rol,
       },
     };
@@ -81,7 +84,7 @@ export class AuthService {
       return { plain, record: created };
     });
 
-    const accessToken = this.signAccessToken(usuario.id, usuario.email, usuario.rol);
+    const accessToken = this.signAccessToken(usuario.id, usuario.username, usuario.rol);
 
     return {
       accessToken,
@@ -121,9 +124,9 @@ export class AuthService {
 
   // --------- helpers privados ---------
 
-  private signAccessToken(sub: string, email: string, rol: string) {
+  private signAccessToken(sub: string, username: string, rol: string) {
     return this.jwt.sign(
-      { sub, email, rol },
+      { sub, username, rol },
       {
         secret: this.getSecret(),
         expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '30m',

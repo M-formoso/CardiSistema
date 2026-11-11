@@ -14,7 +14,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { accessToken, setSession } = useAuthStore();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,7 +28,7 @@ export function LoginPage() {
     if (loading) return;
     setLoading(true);
     try {
-      const data = await authService.login(email.trim(), password);
+      const data = await authService.login(username.trim(), password);
       setSession(data);
       toast.success(`Bienvenido, ${data.usuario.nombre}`);
       navigate(from, { replace: true });
@@ -53,13 +53,16 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Usuario</Label>
               <Input
-                id="email"
-                type="email"
+                id="username"
+                type="text"
                 autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
               />
             </div>

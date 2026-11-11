@@ -16,7 +16,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.auth.login(dto.email, dto.password, {
+    return this.auth.login(dto.username, dto.password, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
@@ -43,6 +43,7 @@ export class AuthController {
   me(@CurrentUser() user: AuthenticatedUser) {
     return {
       id: user.id,
+      username: user.username,
       nombre: user.nombre,
       email: user.email,
       rol: user.rol,

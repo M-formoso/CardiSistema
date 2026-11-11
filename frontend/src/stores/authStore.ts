@@ -3,8 +3,9 @@ import { persist } from 'zustand/middleware';
 
 export type UsuarioSesion = {
   id: string;
+  username: string;
   nombre: string;
-  email: string;
+  email: string | null;
   rol: 'ADMIN' | 'CARGA' | 'CONSULTA';
   permisos?: string[];
 };

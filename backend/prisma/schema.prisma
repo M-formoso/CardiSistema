@@ -185,8 +185,9 @@ enum AuditAccion {
 
 model Usuario {
   id           String     @id @default(uuid())
+  username     String     @unique
   nombre       String
-  email        String     @unique
+  email        String?
   passwordHash String
   rol          RolUsuario
   activo       Boolean    @default(true)

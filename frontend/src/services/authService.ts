@@ -8,8 +8,8 @@ type LoginResponse = {
 };
 
 export const authService = {
-  async login(email: string, password: string): Promise<LoginResponse> {
-    const { data } = await apiClient.post<LoginResponse>('/auth/login', { email, password });
+  async login(username: string, password: string): Promise<LoginResponse> {
+    const { data } = await apiClient.post<LoginResponse>('/auth/login', { username, password });
     return data;
   },
   async logout(refreshToken: string): Promise<void> {

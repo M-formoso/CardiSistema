@@ -67,8 +67,9 @@ CREATE TYPE "AuditAccion" AS ENUM ('CREAR', 'ACTUALIZAR', 'ANULAR', 'REVERTIR', 
 -- CreateTable
 CREATE TABLE "Usuario" (
     "id" TEXT NOT NULL,
+    "username" TEXT NOT NULL,
     "nombre" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
+    "email" TEXT,
     "passwordHash" TEXT NOT NULL,
     "rol" "RolUsuario" NOT NULL,
     "activo" BOOLEAN NOT NULL DEFAULT true,
@@ -540,7 +541,7 @@ CREATE TABLE "MigracionFila" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Usuario_email_key" ON "Usuario"("email");
+CREATE UNIQUE INDEX "Usuario_username_key" ON "Usuario"("username");
 
 -- CreateIndex
 CREATE INDEX "Usuario_activo_idx" ON "Usuario"("activo");
@@ -905,13 +906,3 @@ ALTER TABLE "MigracionLote" ADD CONSTRAINT "MigracionLote_createdById_fkey" FORE
 -- AddForeignKey
 ALTER TABLE "MigracionFila" ADD CONSTRAINT "MigracionFila_loteId_fkey" FOREIGN KEY ("loteId") REFERENCES "MigracionLote"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-┌─────────────────────────────────────────────────────────┐
-│  Update available 5.22.0 -> 8.0.0-rc.33                 │
-│                                                         │
-│  This is a major update - please follow the guide at    │
-│  https://pris.ly/d/major-version-upgrade                │
-│                                                         │
-│  Run the following to update                            │
-│    npm i --save-dev prisma@latest                       │
-│    npm i @prisma/client@latest                          │
-└─────────────────────────────────────────────────────────┘

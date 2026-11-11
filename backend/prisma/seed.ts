@@ -83,16 +83,17 @@ async function seedConfiguracion() {
 }
 
 async function seedAdmin() {
-  const email = process.env.ADMIN_EMAIL ?? 'admin@cardi.local';
+  const username = (process.env.ADMIN_USERNAME ?? 'admin').trim().toLowerCase();
+  const email = process.env.ADMIN_EMAIL ?? null;
   const password = process.env.ADMIN_PASSWORD ?? 'cambiar-en-primer-login';
   const nombre = process.env.ADMIN_NOMBRE ?? 'Administrador Cardi';
 
   const passwordHash = await bcrypt.hash(password, 12);
 
   return prisma.usuario.upsert({
-    where: { email },
-    create: { email, nombre, passwordHash, rol: RolUsuario.ADMIN, activo: true },
-    update: { nombre, rol: RolUsuario.ADMIN, activo: true },
+    where: { username },
+    create: { username, email, nombre, passwordHash, rol: RolUsuario.ADMIN, activo: true },
+    update: { email, nombre, rol: RolUsuario.ADMIN, activo: true },
   });
 }
 
@@ -145,7 +146,7 @@ async function main() {
   await seedObras();
   await seedCategorias();
   await seedCajas();
-  console.log(`✓ Admin: ${admin.email}`);
+  console.log(`✓ Admin: ${admin.username}${admin.email ? ` (${admin.email})` : ''}`);
   console.log(`✓ Obras: ${OBRAS_CONOCIDAS.length} (incluye "Gastos generales")`);
   console.log(`✓ Categorías: ${CATEGORIAS.length}`);
   console.log(`✓ Cajas: ${CAJAS.length}`);
