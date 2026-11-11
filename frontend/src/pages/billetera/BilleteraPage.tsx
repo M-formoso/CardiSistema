@@ -175,7 +175,7 @@ export function BilleteraPage() {
   }, []);
 
   return (
-    <div className="-m-6">
+    <div className="-m-6 lg:-m-8">
       {/* ==================== HERO ==================== */}
       <div
         className="relative bg-accent text-white px-8 lg:px-12 pt-6 pb-8"
