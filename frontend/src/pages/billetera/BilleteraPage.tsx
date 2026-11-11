@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cajasService } from '@/services/cajasService';
@@ -213,20 +214,19 @@ export function BilleteraPage() {
             <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
               Caja
             </label>
-            <Select
-              value={cajaId}
-              onChange={(e) => setCajaId(e.target.value)}
-              className="bg-white/10 border-white/20 text-white"
-            >
-              <option value="" className="text-foreground">
-                Todas las cajas
-              </option>
-              {cajas.map((c) => (
-                <option key={c.id} value={c.id} className="text-foreground">
-                  {c.nombre} ({c.moneda})
-                </option>
-              ))}
-            </Select>
+            <div className="[&_button]:bg-white/10 [&_button]:border-white/20 [&_button]:text-white [&_button:hover]:bg-white/20 [&_svg]:text-white/70">
+              <Combobox
+                options={cajas.map((c) => ({
+                  value: c.id,
+                  label: c.nombre,
+                  hint: c.moneda,
+                }))}
+                value={cajaId}
+                onChange={setCajaId}
+                allLabel="Todas las cajas"
+                searchPlaceholder="Buscar caja…"
+              />
+            </div>
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
@@ -361,47 +361,50 @@ export function BilleteraPage() {
               Movimientos
             </h2>
             <div className="flex items-center gap-2 flex-wrap">
-              <Select
+              <Combobox
+                size="sm"
+                className="w-36"
+                options={[
+                  { value: 'INGRESO', label: 'Ingresos' },
+                  { value: 'EGRESO', label: 'Egresos' },
+                ]}
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoMovimiento | '')}
-                className="h-8 text-xs w-32"
-              >
-                <option value="">Tipo: todos</option>
-                <option value="INGRESO">Ingresos</option>
-                <option value="EGRESO">Egresos</option>
-              </Select>
-              <Select
+                onChange={(v) => setTipo(v as TipoMovimiento | '')}
+                allLabel="Tipo: todos"
+                searchPlaceholder="Filtrar tipo…"
+              />
+              <Combobox
+                size="sm"
+                className="w-48"
+                options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
                 value={obraId}
-                onChange={(e) => setObraId(e.target.value)}
-                className="h-8 text-xs w-44"
-              >
-                <option value="">Obra: todas</option>
-                {obras.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                  </option>
-                ))}
-              </Select>
-              <Select
+                onChange={setObraId}
+                allLabel="Obra: todas"
+                searchPlaceholder="Buscar obra…"
+                emptyText="Ninguna obra coincide"
+              />
+              <Combobox
+                size="sm"
+                className="w-52"
+                options={categorias.map((c) => ({
+                  value: c.id,
+                  label: c.nombre,
+                  hint: c.codigo,
+                }))}
                 value={categoriaId}
-                onChange={(e) => setCategoriaId(e.target.value)}
-                className="h-8 text-xs w-44"
-              >
-                <option value="">Categoría: todas</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo} · {c.nombre}
-                  </option>
-                ))}
-              </Select>
+                onChange={setCategoriaId}
+                allLabel="Categoría: todas"
+                searchPlaceholder="Buscar categoría…"
+                emptyText="Ninguna categoría coincide"
+              />
               <div className="relative">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
                 <Input
                   data-mov-search
-                  placeholder="Buscar… (/)"
+                  placeholder="Buscar en descripción… (/)"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  className="pl-7 h-8 text-xs w-56"
+                  className="pl-7 h-8 text-xs w-60"
                 />
               </div>
               {(tipo || obraId || categoriaId || q) && (
