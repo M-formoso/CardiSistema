@@ -24,6 +24,7 @@ import { MovimientosModule } from './modules/movimientos/movimientos.module';
 import { ObrasModule } from './modules/obras/obras.module';
 import { RecibosModule } from './modules/recibos/recibos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
+import { UsuariosModule } from './modules/usuarios/usuarios.module';
 
 @Module({
   imports: [
@@ -64,6 +65,8 @@ import { ReportesModule } from './modules/reportes/reportes.module';
     CompromisosModule,
     // Reportes
     ReportesModule,
+    // Administración
+    UsuariosModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

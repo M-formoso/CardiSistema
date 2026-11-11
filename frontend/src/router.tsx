@@ -3,15 +3,11 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { RutaProtegida } from '@/components/layout/RutaProtegida';
 import { LoginPage } from '@/pages/LoginPage';
 import { BilleteraPage } from '@/pages/billetera/BilleteraPage';
-import { ObrasPage } from '@/pages/ObrasPage';
-import { BeneficiariosPage } from '@/pages/BeneficiariosPage';
-import { CategoriasPage } from '@/pages/CategoriasPage';
-import { LiquidacionesPage } from '@/pages/liquidaciones/LiquidacionesPage';
-import { LiquidacionDetallePage } from '@/pages/liquidaciones/LiquidacionDetallePage';
-import { CertificacionesPage } from '@/pages/CertificacionesPage';
-import { ContratosCuotasPage } from '@/pages/ContratosCuotasPage';
-import { CompromisosPage } from '@/pages/CompromisosPage';
+import { PagosPage } from '@/pages/PagosPage';
+import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
+import { UsuariosPage } from '@/pages/UsuariosPage';
 import { ReportesPage } from '@/pages/ReportesPage';
+import { LiquidacionDetallePage } from '@/pages/liquidaciones/LiquidacionDetallePage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -21,24 +17,46 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          // Billetera es el home: cajas + movimientos + cheques + cotización
+          // Home: billetera
           { index: true, element: <BilleteraPage /> },
-          // Rutas viejas → redirigen a billetera
+
+          // Hubs consolidados
+          { path: 'pagos', element: <PagosPage /> },
+          { path: 'configuracion', element: <ConfiguracionPage /> },
+
+          // Detalle que necesita ruta propia (link desde dentro de un tab)
+          { path: 'liquidaciones/:id', element: <LiquidacionDetallePage /> },
+
+          // Reportes
+          { path: 'reportes', element: <ReportesPage /> },
+
+          // Usuarios (ABM, solo ADMIN)
+          { path: 'usuarios', element: <UsuariosPage /> },
+
+          // Redirects legacy — viejas rutas ahora viven dentro de los hubs
           { path: 'movimientos', element: <Navigate to="/" replace /> },
           { path: 'cheques', element: <Navigate to="/" replace /> },
           { path: 'cajas', element: <Navigate to="/" replace /> },
           { path: 'billetera', element: <Navigate to="/" replace /> },
-          // Maestros
-          { path: 'obras', element: <ObrasPage /> },
-          { path: 'beneficiarios', element: <BeneficiariosPage /> },
-          { path: 'categorias', element: <CategoriasPage /> },
-          // Personas y compromisos
-          { path: 'liquidaciones', element: <LiquidacionesPage /> },
-          { path: 'liquidaciones/:id', element: <LiquidacionDetallePage /> },
-          { path: 'certificaciones', element: <CertificacionesPage /> },
-          { path: 'contratos', element: <ContratosCuotasPage /> },
-          { path: 'compromisos', element: <CompromisosPage /> },
-          { path: 'reportes', element: <ReportesPage /> },
+          { path: 'obras', element: <Navigate to="/configuracion?tab=obras" replace /> },
+          {
+            path: 'beneficiarios',
+            element: <Navigate to="/configuracion?tab=beneficiarios" replace />,
+          },
+          {
+            path: 'categorias',
+            element: <Navigate to="/configuracion?tab=categorias" replace />,
+          },
+          {
+            path: 'liquidaciones',
+            element: <Navigate to="/pagos?tab=liquidaciones" replace />,
+          },
+          {
+            path: 'certificaciones',
+            element: <Navigate to="/pagos?tab=certificaciones" replace />,
+          },
+          { path: 'contratos', element: <Navigate to="/pagos?tab=cuotas" replace /> },
+          { path: 'compromisos', element: <Navigate to="/pagos?tab=compromisos" replace /> },
         ],
       },
     ],
