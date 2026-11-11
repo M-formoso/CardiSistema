@@ -18,10 +18,13 @@ import { ChequesModule } from './modules/cheques/cheques.module';
 import { CompromisosModule } from './modules/compromisos/compromisos.module';
 import { ContratosCuotasModule } from './modules/contratos-cuotas/contratos-cuotas.module';
 import { CotizacionesModule } from './modules/cotizaciones/cotizaciones.module';
+import { EmpleadosModule } from './modules/empleados/empleados.module';
+import { EmpresasModule } from './modules/empresas/empresas.module';
 import { HealthModule } from './modules/health/health.module';
 import { LiquidacionesModule } from './modules/liquidaciones/liquidaciones.module';
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
 import { ObrasModule } from './modules/obras/obras.module';
+import { PrestamosEmpleadosModule } from './modules/prestamos-empleados/prestamos-empleados.module';
 import { RecibosModule } from './modules/recibos/recibos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
@@ -52,6 +55,8 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     ObrasModule,
     CategoriasModule,
     BeneficiariosModule,
+    EmpresasModule,
+    EmpleadosModule,
     CajasModule,
     // Billetera
     CotizacionesModule,
@@ -59,6 +64,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     MovimientosModule,
     // Personas y compromisos
     LiquidacionesModule,
+    PrestamosEmpleadosModule,
     RecibosModule,
     CertificacionesModule,
     ContratosCuotasModule,

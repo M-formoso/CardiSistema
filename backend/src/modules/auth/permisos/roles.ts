@@ -15,6 +15,8 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     // Maestros
     'obras:ver', 'obras:crear', 'obras:editar',
     'beneficiarios:ver', 'beneficiarios:crear', 'beneficiarios:editar',
+    'empresas:ver', 'empresas:crear', 'empresas:editar',
+    'empleados:ver', 'empleados:crear', 'empleados:editar',
     'categorias:ver', 'categorias:crear', 'categorias:editar',
     'cajas:ver',
 
@@ -25,6 +27,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
 
     // Personas y compromisos
     'liquidaciones:ver', 'liquidaciones:crear', 'liquidaciones:editar',
+    'prestamos_empleados:ver', 'prestamos_empleados:crear', 'prestamos_empleados:editar',
     'certificaciones:ver', 'certificaciones:crear',
     'contratos_cuotas:ver', 'contratos_cuotas:crear',
     'compromisos:ver', 'compromisos:crear',
@@ -37,12 +40,15 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
   CONSULTA: new Set([
     'obras:ver',
     'beneficiarios:ver',
+    'empresas:ver',
+    'empleados:ver',
     'categorias:ver',
     'cajas:ver',
     'cotizaciones:ver',
     'movimientos:ver',
     'cheques:ver',
     'liquidaciones:ver',
+    'prestamos_empleados:ver',
     'certificaciones:ver',
     'contratos_cuotas:ver',
     'compromisos:ver',

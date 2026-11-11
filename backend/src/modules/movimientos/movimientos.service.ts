@@ -6,11 +6,13 @@ import {
 import {
   CotizacionTipo,
   EstadoMovimiento,
+  EstadoPrestamoEmpleado,
   FuenteCotizacion,
   MedioPago,
   Moneda,
   OrigenMovimiento,
   Prisma,
+  TipoBeneficiario,
   TipoMovimiento,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -118,6 +120,12 @@ export class MovimientosService {
     const imputaciones = repartirMonto(dto.monto, dto.imputaciones);
     await this.validarObrasActivas(imputaciones.map((i) => i.obraId));
 
+    // Detectar si es un préstamo a empleado (categoría PREST_EMP)
+    const esPrestamoEmpleado = await this.esEgresoDePrestamo(
+      dto.categoriaId,
+      dto.beneficiarioId,
+    );
+
     const { montoArs, montoUsd } = this.convertirMontos(dto.monto, caja.moneda, cotizacion);
 
     const grupoId = randomUUID();
@@ -139,7 +147,7 @@ export class MovimientosService {
           categoriaId: dto.categoriaId,
           chequeId: dto.chequeId,
           grupoId,
-          origen: OrigenMovimiento.MANUAL,
+          origen: esPrestamoEmpleado ? OrigenMovimiento.PRESTAMO : OrigenMovimiento.MANUAL,
           estado: EstadoMovimiento.CONFIRMADO,
           createdById: userId,
           updatedById: userId,
@@ -153,6 +161,30 @@ export class MovimientosService {
         },
         include: { imputaciones: true, caja: true },
       });
+
+      // Si es préstamo a empleado, creo el PrestamoEmpleado dentro de la misma transacción
+      if (esPrestamoEmpleado && dto.beneficiarioId) {
+        const monto = new Prisma.Decimal(dto.monto);
+        const prestamo = await tx.prestamoEmpleado.create({
+          data: {
+            beneficiarioId: dto.beneficiarioId,
+            fecha: dto.fecha,
+            monto,
+            saldoPendiente: monto,
+            movimientoId: creado.id,
+            observaciones: dto.descripcion,
+            estado: EstadoPrestamoEmpleado.VIGENTE,
+            createdById: userId,
+            updatedById: userId,
+          },
+        });
+        // Linkeo el movimiento con el origenId = id del préstamo
+        await tx.movimiento.update({
+          where: { id: creado.id },
+          data: { origenId: prestamo.id },
+        });
+      }
+
       return creado;
     });
 
@@ -162,8 +194,35 @@ export class MovimientosService {
       entidad: 'Movimiento',
       entidadId: mov.id,
       despues: { ...mov, imputaciones: mov.imputaciones } as unknown,
+      observacion: esPrestamoEmpleado ? 'Egreso de préstamo a empleado' : undefined,
     });
     return mov;
+  }
+
+  /**
+   * Devuelve true si el egreso corresponde a un préstamo a empleado:
+   * la categoría tiene código PREST_EMP y el beneficiario es tipo EMPLEADO.
+   */
+  private async esEgresoDePrestamo(
+    categoriaId: string | undefined,
+    beneficiarioId: string | undefined,
+  ): Promise<boolean> {
+    if (!categoriaId || !beneficiarioId) return false;
+    const cat = await this.prisma.categoriaGasto.findUnique({
+      where: { id: categoriaId },
+      select: { codigo: true },
+    });
+    if (cat?.codigo !== 'PREST_EMP') return false;
+    const ben = await this.prisma.beneficiario.findUnique({
+      where: { id: beneficiarioId },
+      select: { tipo: true },
+    });
+    if (ben?.tipo !== TipoBeneficiario.EMPLEADO) {
+      throw new BadRequestException(
+        'Un préstamo con categoría "Préstamos a empleados" requiere un beneficiario tipo EMPLEADO',
+      );
+    }
+    return true;
   }
 
   // ================= INGRESO =================
