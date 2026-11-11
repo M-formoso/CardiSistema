@@ -5,8 +5,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Logo } from '@/components/layout/Logo';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { authService } from '@/services/authService';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -45,10 +44,12 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="text-center items-center">
-          <Logo variant="mark" className="justify-center mb-2" />
-          <CardTitle>Sistema Cardi</CardTitle>
-          <CardDescription>Gestión de gastos por obra</CardDescription>
+        <CardHeader className="text-center items-center pt-10 pb-4">
+          <img
+            src="/logo.png"
+            alt="Cardi"
+            className="h-40 w-auto"
+          />
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
