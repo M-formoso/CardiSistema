@@ -23,7 +23,6 @@ import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cajasService } from '@/services/cajasService';
-import { cotizacionesService } from '@/services/cotizacionesService';
 import { obrasService } from '@/services/obrasService';
 import { categoriasService } from '@/services/categoriasService';
 import {
@@ -39,6 +38,7 @@ import { TransferirDialog } from '@/pages/movimientos/TransferirDialog';
 import { CambioMonedaDialog } from '@/pages/movimientos/CambioMonedaDialog';
 import { CarteraChequesDialog } from './CarteraChequesDialog';
 import { NuevoChequeDialog } from './NuevoChequeDialog';
+import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 
 type MonedaFiltro = 'TODAS' | 'ARS' | 'USD';
 
@@ -77,11 +77,6 @@ export function BilleteraPage() {
   const { data: saldos = [] } = useQuery({
     queryKey: ['cajas', 'saldos'],
     queryFn: cajasService.saldos,
-  });
-  const { data: cot } = useQuery({
-    queryKey: ['cotizacion', 'hoy'],
-    queryFn: cotizacionesService.hoy,
-    retry: false,
   });
   const { data: obras = [] } = useQuery({
     queryKey: ['obras', { activo: true }],
@@ -196,7 +191,8 @@ export function BilleteraPage() {
               Cajas, movimientos, cheques y cotización — todo en un solo lugar.
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <CotizacionBadge variant="dark" />
             <NuevoMenu
               onIngreso={() => setOpenIngreso(true)}
               onEgreso={() => setOpenEgreso(true)}
@@ -214,19 +210,18 @@ export function BilleteraPage() {
             <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
               Caja
             </label>
-            <div className="[&_button]:bg-white/10 [&_button]:border-white/20 [&_button]:text-white [&_button:hover]:bg-white/20 [&_svg]:text-white/70">
-              <Combobox
-                options={cajas.map((c) => ({
-                  value: c.id,
-                  label: c.nombre,
-                  hint: c.moneda,
-                }))}
-                value={cajaId}
-                onChange={setCajaId}
-                allLabel="Todas las cajas"
-                searchPlaceholder="Buscar caja…"
-              />
-            </div>
+            <Combobox
+              variant="dark"
+              options={cajas.map((c) => ({
+                value: c.id,
+                label: c.nombre,
+                hint: c.moneda,
+              }))}
+              value={cajaId}
+              onChange={setCajaId}
+              allLabel="Todas las cajas"
+              searchPlaceholder="Buscar caja…"
+            />
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
@@ -293,15 +288,6 @@ export function BilleteraPage() {
                 icon: <Wallet className="h-3 w-3" />,
               },
             ]}
-            footer={
-              cot ? (
-                <span className="text-[10px] text-white/50">
-                  Blue del día · compra {formatearMonto(cot.cotizaciones[0]?.compra ?? 0, 'ARS')} ·
-                  venta {formatearMonto(cot.cotizaciones[0]?.venta ?? 0, 'ARS')} ·{' '}
-                  {cot.fuentePrimaria}
-                </span>
-              ) : null
-            }
           />
           <BigStatCard
             titulo={`Movimientos · ${rangoLabel(desde, hasta)}`}

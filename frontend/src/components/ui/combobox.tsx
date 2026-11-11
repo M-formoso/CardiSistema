@@ -19,6 +19,8 @@ type Props = {
   size?: 'sm' | 'default';
   /** Si está, se muestra como primera opción y limpia el filtro. */
   allLabel?: string;
+  /** `dark` adapta el trigger a fondos oscuros (hero de Billetera). El popover siempre va en tema claro. */
+  variant?: 'light' | 'dark';
 };
 
 /**
@@ -39,6 +41,7 @@ export function Combobox({
   className,
   size = 'default',
   allLabel,
+  variant = 'light',
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
@@ -135,19 +138,27 @@ export function Combobox({
       ? 'h-8 text-xs px-2.5'
       : 'h-10 text-sm px-3';
 
+  const isDark = variant === 'dark';
+  const triggerColorClasses = isDark
+    ? 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+    : 'border-input bg-background hover:bg-muted/5';
+  const placeholderClass = isDark ? 'text-white/60' : 'text-muted';
+  const iconMutedClass = isDark ? 'text-white/70' : 'text-muted';
+
   return (
     <div ref={containerRef} className={cn('relative', className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'w-full flex items-center justify-between rounded-md border border-input bg-background',
-          'hover:bg-muted/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'w-full flex items-center justify-between rounded-md border',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'transition-colors',
+          triggerColorClasses,
           sizeClasses,
         )}
       >
-        <span className={cn('truncate', !selected && 'text-muted')}>{displayLabel}</span>
+        <span className={cn('truncate', !selected && placeholderClass)}>{displayLabel}</span>
         <div className="flex items-center gap-1 ml-2 shrink-0">
           {hasSelection && allLabel && (
             <button
@@ -157,17 +168,19 @@ export function Combobox({
                 e.stopPropagation();
                 onChange('');
               }}
-              className="text-muted hover:text-foreground"
+              className={cn(
+                isDark ? 'text-white/70 hover:text-white' : 'text-muted hover:text-foreground',
+              )}
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-          <ChevronsUpDown className="h-3.5 w-3.5 text-muted" />
+          <ChevronsUpDown className={cn('h-3.5 w-3.5', iconMutedClass)} />
         </div>
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-md shadow-xl overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card text-foreground border border-border rounded-md shadow-xl overflow-hidden">
           {/* Search */}
           <div className="relative border-b border-border">
             <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
@@ -178,7 +191,7 @@ export function Combobox({
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder={searchPlaceholder}
-              className="w-full pl-8 pr-2 py-2 text-sm bg-transparent border-0 focus:outline-none placeholder:text-muted"
+              className="w-full pl-8 pr-2 py-2 text-sm bg-transparent border-0 focus:outline-none text-foreground placeholder:text-muted"
             />
           </div>
 
