@@ -17,6 +17,8 @@
     "db:migrate": "pnpm --filter backend db:migrate",
     "db:seed": "pnpm --filter backend db:seed",
     "migracion": "pnpm --filter backend migracion",
+    "start:backend": "echo '>>> Iniciando BACKEND Cardi' && pnpm --filter @cardi/backend start:prod",
+    "start:frontend": "echo '>>> Iniciando FRONTEND Cardi' && pnpm --filter @cardi/frontend start",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yaml,yml}\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yaml,yml}\" --ignore-path .gitignore"
   },
