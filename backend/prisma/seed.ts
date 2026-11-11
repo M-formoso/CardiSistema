@@ -29,6 +29,16 @@ const OBRAS_CONOCIDAS = [
   { nombre: 'Doma', tipo: TipoObra.OBRA },
   { nombre: 'Bower', tipo: TipoObra.OBRA },
   { nombre: 'Galpones Brasil', tipo: TipoObra.OBRA },
+  { nombre: 'Tierra Alta', tipo: TipoObra.OBRA },
+  { nombre: 'Fonte', tipo: TipoObra.OBRA },
+  { nombre: 'Bior', tipo: TipoObra.OBRA },
+  { nombre: 'Namba', tipo: TipoObra.OBRA },
+  { nombre: 'Namba 2', tipo: TipoObra.OBRA },
+  { nombre: 'Duvet', tipo: TipoObra.OBRA },
+  { nombre: 'Impero', tipo: TipoObra.OBRA },
+  { nombre: 'Reggio', tipo: TipoObra.OBRA },
+  { nombre: 'Vicente', tipo: TipoObra.OBRA },
+  { nombre: 'Stefano', tipo: TipoObra.OBRA },
   { nombre: 'Gastos generales', tipo: TipoObra.GENERAL },
 ] as const;
 
