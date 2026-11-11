@@ -5,7 +5,6 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   // Log temprano para diagnosticar — sale a stdout antes de que pino arme buffers.
-  // eslint-disable-next-line no-console
   console.log('[boot] iniciando Sistema Cardi backend', {
     port: process.env.PORT,
     nodeEnv: process.env.NODE_ENV,
@@ -34,7 +33,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('[boot] fatal error', err);
   process.exit(1);
 });

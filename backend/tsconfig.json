@@ -15,8 +15,9 @@
     "noUnusedParameters": false,
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    "rootDir": "./src"
   },
-  "include": ["src/**/*", "prisma/seed.ts"],
-  "exclude": ["node_modules", "dist", "test"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "prisma/seed.ts", "**/*.spec.ts"]
 }
