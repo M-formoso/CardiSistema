@@ -23,6 +23,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cajasService } from '@/services/cajasService';
 import { cotizacionesService } from '@/services/cotizacionesService';
+import { obrasService } from '@/services/obrasService';
+import { categoriasService } from '@/services/categoriasService';
 import {
   movimientosService,
   type EstadoMovimiento,
@@ -54,6 +56,8 @@ export function BilleteraPage() {
   const [desde, setDesde] = useState<string>(() => inicioMesActual());
   const [hasta, setHasta] = useState<string>(() => hoyIso());
   const [tipo, setTipo] = useState<TipoMovimiento | ''>('');
+  const [obraId, setObraId] = useState<string>('');
+  const [categoriaId, setCategoriaId] = useState<string>('');
   const [q, setQ] = useState('');
 
   // ---------- Dialogs ----------
@@ -78,12 +82,22 @@ export function BilleteraPage() {
     queryFn: cotizacionesService.hoy,
     retry: false,
   });
+  const { data: obras = [] } = useQuery({
+    queryKey: ['obras', { activo: true }],
+    queryFn: () => obrasService.list({ activo: true }),
+  });
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias', 'activas'],
+    queryFn: () => categoriasService.list(true),
+  });
   const { data: listado, isLoading: loadingMovs } = useQuery({
-    queryKey: ['movimientos', { cajaId, tipo, desde, hasta, q }],
+    queryKey: ['movimientos', { cajaId, tipo, obraId, categoriaId, desde, hasta, q }],
     queryFn: () =>
       movimientosService.list({
         cajaId: cajaId || undefined,
         tipo: tipo || undefined,
+        obraId: obraId || undefined,
+        categoriaId: categoriaId || undefined,
         desde,
         hasta,
         q: q || undefined,
@@ -342,11 +356,11 @@ export function BilleteraPage() {
 
         {/* Movimientos */}
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Movimientos
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Select
                 value={tipo}
                 onChange={(e) => setTipo(e.target.value as TipoMovimiento | '')}
@@ -355,6 +369,30 @@ export function BilleteraPage() {
                 <option value="">Tipo: todos</option>
                 <option value="INGRESO">Ingresos</option>
                 <option value="EGRESO">Egresos</option>
+              </Select>
+              <Select
+                value={obraId}
+                onChange={(e) => setObraId(e.target.value)}
+                className="h-8 text-xs w-44"
+              >
+                <option value="">Obra: todas</option>
+                {obras.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={categoriaId}
+                onChange={(e) => setCategoriaId(e.target.value)}
+                className="h-8 text-xs w-44"
+              >
+                <option value="">Categoría: todas</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} · {c.nombre}
+                  </option>
+                ))}
               </Select>
               <div className="relative">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
@@ -366,6 +404,21 @@ export function BilleteraPage() {
                   className="pl-7 h-8 text-xs w-56"
                 />
               </div>
+              {(tipo || obraId || categoriaId || q) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    setTipo('');
+                    setObraId('');
+                    setCategoriaId('');
+                    setQ('');
+                  }}
+                >
+                  Limpiar
+                </Button>
+              )}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-card">
@@ -377,8 +430,10 @@ export function BilleteraPage() {
                   <TableHead>Caja</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Equiv.</TableHead>
+                  <TableHead>Obra(s)</TableHead>
+                  <TableHead>Categoría</TableHead>
                   <TableHead>Beneficiario</TableHead>
-                  <TableHead>Obra(s) / Descripción</TableHead>
+                  <TableHead>Descripción</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -386,7 +441,7 @@ export function BilleteraPage() {
               <TableBody>
                 {loadingMovs && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted py-8">
+                    <TableCell colSpan={11} className="text-center text-muted py-8">
                       <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                       Cargando…
                     </TableCell>
@@ -394,7 +449,7 @@ export function BilleteraPage() {
                 )}
                 {!loadingMovs && listado?.data.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted py-8">
+                    <TableCell colSpan={11} className="text-center text-muted py-8">
                       Sin movimientos en el período. Ampliá las fechas o cargá el primero arriba.
                     </TableCell>
                   </TableRow>
@@ -476,6 +531,10 @@ export function BilleteraPage() {
 // ======================================================================
 
 function MovimientoRow({ m, onAnular }: { m: Movimiento; onAnular: () => void }) {
+  const obras =
+    m.imputaciones?.length
+      ? m.imputaciones.map((i) => i.obra.nombre).join(', ')
+      : null;
   return (
     <TableRow>
       <TableCell className="num">{formatearFecha(m.fecha)}</TableCell>
@@ -495,16 +554,19 @@ function MovimientoRow({ m, onAnular }: { m: Movimiento; onAnular: () => void })
           ? formatearMonto(m.montoUsd, 'USD')
           : formatearMonto(m.montoArs, 'ARS')}
       </TableCell>
+      <TableCell className="text-xs max-w-[180px]">
+        {obras ? (
+          <span className="inline-block px-2 py-0.5 rounded bg-primary/10 text-primary font-medium truncate max-w-full">
+            {obras}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </TableCell>
+      <TableCell className="text-xs text-muted">{m.categoria?.nombre ?? '—'}</TableCell>
       <TableCell className="text-xs">{m.beneficiario?.nombre ?? '—'}</TableCell>
       <TableCell className="text-xs max-w-xs">
-        <div className="truncate">
-          {m.imputaciones?.length
-            ? m.imputaciones.map((i) => i.obra.nombre).join(', ')
-            : m.descripcion ?? '—'}
-        </div>
-        {m.descripcion && m.imputaciones?.length ? (
-          <div className="truncate text-muted">{m.descripcion}</div>
-        ) : null}
+        <div className="truncate">{m.descripcion ?? '—'}</div>
       </TableCell>
       <TableCell>
         <Badge variant={ESTADO_VARIANTE[m.estado]}>{m.estado}</Badge>

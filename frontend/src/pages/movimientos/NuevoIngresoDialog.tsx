@@ -17,6 +17,8 @@ import {
 import { movimientosService, type MedioPago } from '@/services/movimientosService';
 import { cajasService } from '@/services/cajasService';
 import { beneficiariosService } from '@/services/beneficiariosService';
+import { obrasService } from '@/services/obrasService';
+import { categoriasService } from '@/services/categoriasService';
 
 export function NuevoIngresoDialog({
   open,
@@ -32,12 +34,25 @@ export function NuevoIngresoDialog({
   const [monto, setMonto] = useState('');
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO');
   const [beneficiarioId, setBeneficiarioId] = useState('');
+  const [obraIngresoId, setObraIngresoId] = useState('');
+  const [categoriaId, setCategoriaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
 
-  const { data: cajas = [] } = useQuery({ queryKey: ['cajas', 'activas'], queryFn: () => cajasService.list(true) });
+  const { data: cajas = [] } = useQuery({
+    queryKey: ['cajas', 'activas'],
+    queryFn: () => cajasService.list(true),
+  });
   const { data: benes = [] } = useQuery({
     queryKey: ['beneficiarios', { activo: true }],
     queryFn: () => beneficiariosService.list({ activo: true }),
+  });
+  const { data: obras = [] } = useQuery({
+    queryKey: ['obras', { activo: true }],
+    queryFn: () => obrasService.list({ activo: true }),
+  });
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias', 'activas'],
+    queryFn: () => categoriasService.list(true),
   });
 
   const cajaSel = cajas.find((c) => c.id === cajaId);
@@ -51,6 +66,8 @@ export function NuevoIngresoDialog({
         monto: Number(monto),
         medioPago,
         beneficiarioId: beneficiarioId || undefined,
+        obraIngresoId: obraIngresoId || undefined,
+        categoriaId: categoriaId || undefined,
         descripcion: descripcion.trim() || undefined,
       }),
     onSuccess: () => {
@@ -58,18 +75,21 @@ export function NuevoIngresoDialog({
       setMonto('');
       setDescripcion('');
       setBeneficiarioId('');
+      setObraIngresoId('');
+      setCategoriaId('');
       onCreated();
     },
     onError: (err) => {
       toast.error(
-        (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'No se pudo',
+        (err as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          'No se pudo',
       );
     },
   });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Nuevo ingreso</DialogTitle>
         </DialogHeader>
@@ -99,7 +119,10 @@ export function NuevoIngresoDialog({
             </div>
             <div className="space-y-2">
               <Label>Medio *</Label>
-              <Select value={medioPago} onChange={(e) => setMedioPago(e.target.value as MedioPago)}>
+              <Select
+                value={medioPago}
+                onChange={(e) => setMedioPago(e.target.value as MedioPago)}
+              >
                 <option value="EFECTIVO">Efectivo</option>
                 <option value="TRANSFERENCIA">Transferencia</option>
                 <option value="CHEQUE_TERCERO">Cheque recibido</option>
@@ -120,12 +143,37 @@ export function NuevoIngresoDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Origen (opcional)</Label>
+              <Label>Origen (quién envía)</Label>
               <Select value={beneficiarioId} onChange={(e) => setBeneficiarioId(e.target.value)}>
                 <option value="">Sin origen</option>
                 {benes.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.nombre}
+                    {b.nombre} · {b.tipo}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Obra / Proyecto</Label>
+              <Select value={obraIngresoId} onChange={(e) => setObraIngresoId(e.target.value)}>
+                <option value="">Sin obra</option>
+                {obras.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Categoría</Label>
+              <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+                <option value="">Sin categoría</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} · {c.nombre}
                   </option>
                 ))}
               </Select>
@@ -134,7 +182,12 @@ export function NuevoIngresoDialog({
 
           <div className="space-y-2">
             <Label>Descripción</Label>
-            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
+            <Textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={2}
+              placeholder="Detalle del ingreso…"
+            />
           </div>
 
           <DialogFooter>
