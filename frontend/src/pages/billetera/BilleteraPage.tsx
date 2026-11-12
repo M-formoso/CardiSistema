@@ -502,7 +502,8 @@ export function BilleteraPage() {
               onPageSizeChange={setPageSize}
             />
           )}
-          <div className="text-xs text-muted px-4 sm:px-6 lg:px-8 py-2 border-t border-border flex items-center justify-between flex-wrap gap-2">
+          {/* Atajos de teclado — solo desktop (no sirven en mobile sin teclado físico) */}
+          <div className="hidden md:flex text-xs text-muted px-4 sm:px-6 lg:px-8 py-2 border-t border-border items-center justify-between flex-wrap gap-2">
             <span>
               Atajos: <kbd className="px-1 border rounded">n</kbd> ingreso ·{' '}
               <kbd className="px-1 border rounded">e</kbd> egreso ·{' '}

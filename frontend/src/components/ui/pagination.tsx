@@ -32,20 +32,20 @@ export function Pagination({
   return (
     <div
       className={cn(
-        'flex flex-col sm:flex-row items-center justify-between gap-3 px-3 py-2.5 text-sm',
+        'flex items-center justify-between gap-2 px-3 py-1.5 text-sm',
         className,
       )}
     >
-      {/* Selector de tamaño */}
-      <div className="flex items-center gap-2 text-muted">
-        <span>Mostrar</span>
+      {/* Selector de tamaño — en mobile compacto, en desktop con labels */}
+      <div className="flex items-center gap-2 text-muted text-xs">
+        <span className="hidden sm:inline">Mostrar</span>
         <select
           value={pageSize}
           onChange={(e) => {
             onPageSizeChange(Number(e.target.value));
-            onPageChange(1); // reset a página 1 al cambiar size
+            onPageChange(1);
           }}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {pageSizeOptions.map((opt) => (
             <option key={opt} value={opt}>
@@ -53,12 +53,12 @@ export function Pagination({
             </option>
           ))}
         </select>
-        <span>por página</span>
+        <span className="hidden sm:inline">por página</span>
       </div>
 
-      {/* Info + navegación */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-muted tabular-nums">
+      {/* Info + navegación — en mobile sin labels de "Página X de Y" */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted tabular-nums whitespace-nowrap">
           {total === 0 ? 'Sin resultados' : `${start}–${end} de ${total}`}
         </span>
         <div className="flex items-center gap-0.5">
@@ -72,9 +72,10 @@ export function Pagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </PageBtn>
-          <span className="px-2 text-xs tabular-nums">
-            Página <span className="font-medium text-foreground">{currentPage}</span> de{' '}
-            {totalPages}
+          <span className="px-1.5 text-xs tabular-nums whitespace-nowrap">
+            <span className="hidden sm:inline">Página </span>
+            <span className="font-medium text-foreground">{currentPage}</span>
+            <span className="text-muted"> / {totalPages}</span>
           </span>
           <PageBtn
             aria="Siguiente"
@@ -114,7 +115,7 @@ function PageBtn({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'h-8 w-8 flex items-center justify-center rounded-md',
+        'h-7 w-7 flex items-center justify-center rounded-md',
         'text-foreground hover:bg-muted/10 transition-colors',
         'disabled:opacity-40 disabled:pointer-events-none',
       )}

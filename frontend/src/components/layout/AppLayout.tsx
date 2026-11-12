@@ -12,7 +12,7 @@ export function AppLayout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Header mobile — solo < md */}
-        <header className="md:hidden flex items-center gap-3 h-14 px-4 bg-card border-b border-border shrink-0">
+        <header className="md:hidden flex items-center justify-between h-14 px-4 bg-card border-b border-border shrink-0">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
