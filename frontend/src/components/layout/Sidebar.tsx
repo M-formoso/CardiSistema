@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Wallet,
-  CreditCard,
   FileBarChart2,
   FileCheck2,
   HardHat,
@@ -21,7 +20,6 @@ const NAV = [
   { to: '/', label: 'Billetera', icon: Wallet, end: true },
   { to: '/empleados', label: 'Empleados', icon: HardHat },
   { to: '/certificaciones', label: 'Certificaciones', icon: FileCheck2 },
-  { to: '/pagos', label: 'Pagos', icon: CreditCard },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart2 },
 ];
 

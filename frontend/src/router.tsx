@@ -3,7 +3,6 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { RutaProtegida } from '@/components/layout/RutaProtegida';
 import { LoginPage } from '@/pages/LoginPage';
 import { BilleteraPage } from '@/pages/billetera/BilleteraPage';
-import { PagosPage } from '@/pages/PagosPage';
 import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
 import { UsuariosPage } from '@/pages/UsuariosPage';
 import { ReportesPage } from '@/pages/ReportesPage';
@@ -25,8 +24,10 @@ export const router = createBrowserRouter([
           { index: true, element: <BilleteraPage /> },
 
           // Hubs consolidados
-          { path: 'pagos', element: <PagosPage /> },
           { path: 'configuracion', element: <ConfiguracionPage /> },
+
+          // /pagos quedó deprecado: todo el flujo semanal vive en /certificaciones.
+          { path: 'pagos', element: <Navigate to="/certificaciones" replace /> },
 
           // Secciones top-level nuevas
           { path: 'empleados', element: <EmpleadosPage /> },
@@ -59,7 +60,7 @@ export const router = createBrowserRouter([
           },
           {
             path: 'liquidaciones',
-            element: <Navigate to="/pagos?tab=liquidaciones" replace />,
+            element: <Navigate to="/certificaciones" replace />,
           },
           { path: 'contratos', element: <Navigate to="/pagos?tab=cuotas" replace /> },
           { path: 'compromisos', element: <Navigate to="/pagos?tab=compromisos" replace /> },
