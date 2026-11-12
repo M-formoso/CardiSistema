@@ -7,11 +7,11 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="h-screen flex bg-background overflow-hidden">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Header mobile — solo < md */}
-        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 bg-card border-b border-border">
+        <header className="md:hidden flex items-center gap-3 h-14 px-4 bg-card border-b border-border shrink-0">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}

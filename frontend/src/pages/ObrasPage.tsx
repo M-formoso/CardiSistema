@@ -18,6 +18,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { obrasService, type Obra } from '@/services/obrasService';
 import { formatearMonto } from '@/lib/formatters';
+import { usePagination } from '@/lib/usePagination';
+import { Pagination } from '@/components/ui/pagination';
 
 const estadoVariante: Record<Obra['estado'], 'default' | 'success' | 'warning' | 'muted'> = {
   ACTIVA: 'success',
@@ -30,10 +32,12 @@ export function ObrasPage() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
-  const { data: obras = [], isLoading } = useQuery({
+  const { data: obrasRaw = [], isLoading } = useQuery({
     queryKey: ['obras', { q }],
     queryFn: () => obrasService.list({ q: q || undefined }),
   });
+  const { paginados: obras, total, page, pageSize, setPage, setPageSize } =
+    usePagination(obrasRaw, 25);
 
   return (
     <div className="space-y-4">
@@ -56,6 +60,14 @@ export function ObrasPage() {
       />
 
       <div className="rounded-lg border border-border bg-card">
+        <Pagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          className="border-b border-border"
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,6 +113,16 @@ export function ObrasPage() {
             ))}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            className="border-t border-border"
+          />
+        )}
       </div>
 
       <NuevaObraDialog

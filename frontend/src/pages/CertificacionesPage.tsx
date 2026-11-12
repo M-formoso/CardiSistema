@@ -25,6 +25,8 @@ import {
 import { empleadosService, type Empleado } from '@/services/empleadosService';
 import { obrasService } from '@/services/obrasService';
 import { formatearFecha, formatearMonto } from '@/lib/formatters';
+import { usePagination } from '@/lib/usePagination';
+import { Pagination } from '@/components/ui/pagination';
 
 const ESTADO_VARIANTE: Record<EstadoLiquidacion, 'default' | 'success' | 'warning' | 'muted'> = {
   BORRADOR: 'muted',
@@ -59,7 +61,7 @@ export function CertificacionesPage() {
     queryFn: () => obrasService.list({ activo: true }),
   });
 
-  const { data: list = [], isLoading } = useQuery({
+  const { data: listRaw = [], isLoading } = useQuery({
     queryKey: ['certificaciones', { filtroObra, filtroEstado }],
     queryFn: () =>
       liquidacionesService.list({
@@ -67,6 +69,8 @@ export function CertificacionesPage() {
         estado: filtroEstado || undefined,
       }),
   });
+  const { paginados: list, total, page, pageSize, setPage, setPageSize } =
+    usePagination(listRaw, 25);
 
   const obrasOpts = useMemo(
     () => obras.map((o) => ({ value: o.id, label: o.nombre })),
@@ -110,6 +114,14 @@ export function CertificacionesPage() {
       </div>
 
       <div className="rounded-lg border border-border bg-card">
+        <Pagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          className="border-b border-border"
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -176,6 +188,16 @@ export function CertificacionesPage() {
             })}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            className="border-t border-border"
+          />
+        )}
       </div>
 
       {open && (

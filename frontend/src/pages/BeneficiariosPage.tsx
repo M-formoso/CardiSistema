@@ -19,6 +19,8 @@ import {
   beneficiariosService,
   type TipoBeneficiario,
 } from '@/services/beneficiariosService';
+import { usePagination } from '@/lib/usePagination';
+import { Pagination } from '@/components/ui/pagination';
 
 const TIPOS: Array<{ v: TipoBeneficiario | ''; label: string }> = [
   { v: '', label: 'Todos' },
@@ -34,7 +36,7 @@ export function BeneficiariosPage() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
-  const { data: list = [], isLoading } = useQuery({
+  const { data: listRaw = [], isLoading } = useQuery({
     queryKey: ['beneficiarios', { tipo, q }],
     queryFn: () =>
       beneficiariosService.list({
@@ -42,6 +44,8 @@ export function BeneficiariosPage() {
         q: q || undefined,
       }),
   });
+  const { paginados: list, total, page, pageSize, setPage, setPageSize } =
+    usePagination(listRaw, 25);
 
   return (
     <div className="space-y-4">
@@ -79,6 +83,14 @@ export function BeneficiariosPage() {
       </div>
 
       <div className="rounded-lg border border-border bg-card">
+        <Pagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          className="border-b border-border"
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -122,6 +134,16 @@ export function BeneficiariosPage() {
             ))}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            className="border-t border-border"
+          />
+        )}
       </div>
 
       <NuevoBeneficiarioDialog

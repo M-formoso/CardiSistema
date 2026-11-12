@@ -88,7 +88,7 @@ export function Sidebar({ open, onClose }: Props) {
 
       <aside
         className={cn(
-          'fixed md:static inset-y-0 left-0 z-50 w-64 md:w-60 flex flex-col',
+          'fixed md:static inset-y-0 left-0 z-50 w-64 md:w-60 h-full flex flex-col shrink-0',
           'border-r border-border bg-card',
           'transform transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
