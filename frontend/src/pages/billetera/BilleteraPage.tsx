@@ -331,10 +331,10 @@ export function BilleteraPage() {
         </div>
       </div>
 
-      {/* ==================== BODY (scrollea solo) ==================== */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Filtros de movimientos — sticky top-0 dentro del body */}
-        <div className="sticky top-0 z-20 bg-background border-b border-border px-4 sm:px-8 lg:px-12 py-3">
+      {/* ==================== BODY (hero → filtros → tabla scroll → footer) ==================== */}
+      <div className="flex-1 min-h-0 flex flex-col bg-card">
+        {/* Filtros fijos arriba */}
+        <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-3 bg-card">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Movimientos
@@ -405,66 +405,67 @@ export function BilleteraPage() {
           </div>
         </div>
 
-        {/* Tabla de movimientos — ocupa todo el ancho, thead sticky debajo de los filtros */}
-        <div className="px-4 sm:px-8 lg:px-12 py-4">
-          <div className="rounded-lg border border-border bg-card">
-            <Table>
-              <TableHeader className="[&_th]:sticky [&_th]:top-[68px] [&_th]:bg-card [&_th]:z-10">
+        {/* Tabla scrolleable — ocupa todo el espacio libre */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <Table>
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-card [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:shadow-[0_1px_0_0_hsl(var(--border))]">
+              <TableRow>
+                <TableHead className="pl-4 sm:pl-6 lg:pl-8">Fecha</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Caja</TableHead>
+                <TableHead>Monto</TableHead>
+                <TableHead>Equiv.</TableHead>
+                <TableHead>Obra(s)</TableHead>
+                <TableHead>Categoría</TableHead>
+                <TableHead>Beneficiario</TableHead>
+                <TableHead>Descripción</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="pr-4 sm:pr-6 lg:pr-8"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loadingMovs && (
                 <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Caja</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Equiv.</TableHead>
-                  <TableHead>Obra(s)</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Beneficiario</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead></TableHead>
+                  <TableCell colSpan={11} className="text-center text-muted py-8">
+                    <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
+                    Cargando…
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingMovs && (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted py-8">
-                      <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
-                      Cargando…
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loadingMovs && listado?.data.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted py-8">
-                      Sin movimientos en el período. Ampliá las fechas o cargá el primero arriba.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {listado?.data.map((m) => (
-                  <MovimientoRow
-                    key={m.id}
-                    m={m}
-                    onAnular={() => {
-                      const motivo = prompt('Motivo de la anulación:');
-                      if (motivo && motivo.trim().length >= 3)
-                        anularMut.mutate({ id: m.id, motivo: motivo.trim() });
-                    }}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-            {listado && (
-              <Pagination
-                total={listado.total}
-                page={page}
-                pageSize={pageSize}
-                onPageChange={setPage}
-                onPageSizeChange={setPageSize}
-                className="border-t border-border"
-              />
-            )}
-          </div>
-          <div className="text-xs text-muted mt-2 flex items-center justify-between">
+              )}
+              {!loadingMovs && listado?.data.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center text-muted py-8">
+                    Sin movimientos en el período. Ampliá las fechas o cargá el primero arriba.
+                  </TableCell>
+                </TableRow>
+              )}
+              {listado?.data.map((m) => (
+                <MovimientoRow
+                  key={m.id}
+                  m={m}
+                  onAnular={() => {
+                    const motivo = prompt('Motivo de la anulación:');
+                    if (motivo && motivo.trim().length >= 3)
+                      anularMut.mutate({ id: m.id, motivo: motivo.trim() });
+                  }}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Footer fijo abajo: paginación + atajos */}
+        <div className="shrink-0 border-t border-border bg-card">
+          {listado && (
+            <Pagination
+              total={listado.total}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
+          <div className="text-xs text-muted px-4 sm:px-6 lg:px-8 py-2 border-t border-border flex items-center justify-between flex-wrap gap-2">
             <span>
               Atajos: <kbd className="px-1 border rounded">n</kbd> ingreso ·{' '}
               <kbd className="px-1 border rounded">e</kbd> egreso ·{' '}
