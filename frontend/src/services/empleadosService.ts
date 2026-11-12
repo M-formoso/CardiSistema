@@ -90,6 +90,15 @@ export const empleadosService = {
   update: async (id: string, input: UpdateEmpleadoInput) =>
     (await apiClient.patch<Empleado>(`/empleados/${id}`, input)).data,
   desactivar: async (id: string) => (await apiClient.delete<Empleado>(`/empleados/${id}`)).data,
+  cargarIniciales: async () =>
+    (
+      await apiClient.post<{
+        total: number;
+        creados: number;
+        actualizados: number;
+        categoriasFaltantes: boolean;
+      }>('/empleados/cargar-iniciales')
+    ).data,
   historialJornales: async (id: string) =>
     (await apiClient.get<EmpleadoJornalHistorico[]>(`/empleados/${id}/jornales`)).data,
   actualizarJornal: async (

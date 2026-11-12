@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { Loader2, Plus, Trash2, ExternalLink, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -77,6 +77,26 @@ export function EmpleadosPage() {
     },
   });
 
+  const cargarMut = useMutation({
+    mutationFn: () => empleadosService.cargarIniciales(),
+    onSuccess: (r) => {
+      toast.success(
+        `Importados: ${r.creados} nuevos · ${r.actualizados} actualizados (total ${r.total})`,
+      );
+      if (r.categoriasFaltantes) {
+        toast.warning(
+          'No había categorías cargadas — los empleados quedaron sin categoría. Cargalas y volvé a importar para asociarlas.',
+        );
+      }
+      qc.invalidateQueries({ queryKey: ['empleados'] });
+    },
+    onError: (e) =>
+      toast.error(
+        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          'No se pudo importar',
+      ),
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -86,10 +106,27 @@ export function EmpleadosPage() {
             Nómina única: empleados y contratistas (una misma persona puede ser ambos).
           </p>
         </div>
-        <Button onClick={() => { setEditando(null); setOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" />
-          Nuevo empleado
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (confirm('Importar los 24 empleados del Excel inicial del cliente? Es idempotente, no duplica ni pisa datos editados.'))
+                cargarMut.mutate();
+            }}
+            disabled={cargarMut.isPending}
+          >
+            {cargarMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Download className="h-4 w-4 mr-1" />
+            )}
+            Importar del Excel
+          </Button>
+          <Button onClick={() => { setEditando(null); setOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nuevo empleado
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">

@@ -10,6 +10,7 @@ import type {
   FiltrosEmpleadoDto,
   UpdateEmpleadoDto,
 } from './dto/empleados.dto';
+import { cargarEmpleadosIniciales } from './empleados-seed';
 
 /**
  * Empleados: ABM sobre Beneficiario(EMPLEADO) + EmpleadoLegajo.
@@ -314,6 +315,21 @@ export class EmpleadosService {
       throw new NotFoundException('Empleado no encontrado');
     }
     return emp.legajo.historialJornales;
+  }
+
+  /**
+   * Importa empleados iniciales del Excel del cliente (nov 2026).
+   * Idempotente: no duplica ni pisa datos editados manualmente.
+   */
+  async cargarIniciales(userId: string) {
+    const resultado = await cargarEmpleadosIniciales(this.prisma);
+    void this.audit.registrar({
+      usuarioId: userId,
+      accion: 'CREAR',
+      entidad: 'Empleado',
+      observacion: `Carga inicial: ${resultado.creados} creados · ${resultado.actualizados} actualizados · ${resultado.total} total`,
+    });
+    return resultado;
   }
 
   async desactivar(id: string, userId: string) {

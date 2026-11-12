@@ -60,6 +60,13 @@ export class EmpleadosController {
     return this.empleados.create(dto, user.id);
   }
 
+  /** Carga los empleados del Excel inicial del cliente. Idempotente. */
+  @Post('cargar-iniciales')
+  @RequirePermission('empleados', 'crear')
+  cargarIniciales(@CurrentUser() user: AuthenticatedUser) {
+    return this.empleados.cargarIniciales(user.id);
+  }
+
   @Patch(':id')
   @RequirePermission('empleados', 'editar')
   update(
