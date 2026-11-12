@@ -62,7 +62,7 @@ export function GestionCategoriasDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
         {vista.tipo === 'lista' && (
           <>
             <DialogHeader>
@@ -119,10 +119,10 @@ export function GestionCategoriasDialog({
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="num text-right">
+                      <TableCell className="num text-right whitespace-nowrap">
                         {c.jornal ? formatearMonto(c.jornal, 'ARS') : '—'}
                       </TableCell>
-                      <TableCell className="num text-right text-xs">
+                      <TableCell className="num text-right text-xs whitespace-nowrap">
                         {c.valorHoraExtra ? formatearMonto(c.valorHoraExtra, 'ARS') : '—'}
                       </TableCell>
                       <TableCell className="text-center">{c._count?.empleados ?? 0}</TableCell>
