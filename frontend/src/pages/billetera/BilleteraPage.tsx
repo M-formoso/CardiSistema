@@ -190,7 +190,9 @@ export function BilleteraPage() {
   }, []);
 
   return (
-    <div className="-m-4 sm:-m-6 lg:-m-8 h-full flex flex-col">
+    // -m-* neutraliza el padding del <main>; el h-[calc(100%+N)] compensa
+    // ese padding en la altura para que la Billetera ocupe el main completo.
+    <div className="-m-4 sm:-m-6 lg:-m-8 h-[calc(100%+2rem)] sm:h-[calc(100%+3rem)] lg:h-[calc(100%+4rem)] flex flex-col">
       {/* ==================== HERO ==================== */}
       <div
         className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8 shadow-lg"
