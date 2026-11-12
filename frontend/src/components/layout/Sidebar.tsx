@@ -8,12 +8,16 @@ import {
   Settings2,
   UsersRound,
   LogOut,
+  Moon,
+  Sun,
+  Monitor,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
+import { useTheme, type Tema } from '@/stores/themeStore';
 import { Logo } from './Logo';
 
 const NAV = [
@@ -38,6 +42,7 @@ export function Sidebar({ open, onClose }: Props) {
   const { usuario, refreshToken, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const { tema, setTema } = useTheme();
   const esAdmin = usuario?.rol === 'ADMIN';
 
   const inicial = (usuario?.nombre ?? usuario?.username ?? '?').trim().charAt(0).toUpperCase();
@@ -120,6 +125,35 @@ export function Sidebar({ open, onClose }: Props) {
           )}
         </nav>
         <div className="border-t border-border p-3 space-y-2">
+          {/* Toggle de tema */}
+          <div className="flex items-center gap-1 bg-muted/10 rounded-md p-0.5">
+            {([
+              { v: 'light', icon: Sun, label: 'Claro' },
+              { v: 'system', icon: Monitor, label: 'Sistema' },
+              { v: 'dark', icon: Moon, label: 'Oscuro' },
+            ] as Array<{ v: Tema; icon: typeof Sun; label: string }>).map((opt) => {
+              const Icon = opt.icon;
+              const activo = tema === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setTema(opt.v)}
+                  title={opt.label}
+                  aria-label={`Tema ${opt.label.toLowerCase()}`}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1 py-1 rounded transition-colors text-[11px]',
+                    activo
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center font-semibold text-sm shrink-0">
               {inicial}

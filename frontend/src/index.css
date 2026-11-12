@@ -33,6 +33,34 @@
     --radius: 0.5rem;
   }
 
+  /* Modo oscuro — se activa agregando la clase `dark` al <html>. */
+  .dark {
+    --background: 222 22% 10%;
+    --foreground: 210 20% 96%;
+
+    --card: 222 20% 13%;
+    --card-foreground: 210 20% 96%;
+
+    --primary: 201 60% 55%;
+    --primary-foreground: 222 22% 10%;
+    --primary-dark: 201 55% 42%;
+    --primary-light: 201 50% 70%;
+
+    --accent: 206 40% 20%;
+    --accent-foreground: 210 20% 96%;
+
+    --muted: 214 13% 60%;
+    --muted-foreground: 214 13% 70%;
+
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
+    --ring: 201 60% 55%;
+
+    --success: 160 70% 45%;
+    --warning: 38 92% 55%;
+    --danger: 0 80% 65%;
+  }
+
   * {
     @apply border-border;
   }
