@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import PDFDocument from 'pdfkit';
 import * as fs from 'node:fs';
@@ -114,6 +119,16 @@ export class RecibosService {
     });
     if (!liq) throw new NotFoundException('Liquidación no encontrada');
 
+    // Regla de negocio: el recibo solo se puede descargar cuando el pago
+    // está hecho (parcial o total). Antes de eso, es una liquidación en
+    // borrador o aprobada sin plata entregada todavía.
+    const estadosPermitidos = ['PAGADA_PARCIAL', 'PAGADA', 'CERRADA'];
+    if (!estadosPermitidos.includes(liq.estado)) {
+      throw new BadRequestException(
+        'El recibo se puede imprimir solo después de registrar el pago (total o parcial).',
+      );
+    }
+
     const items = liq.items.filter((i) => i.conceptos.length > 0);
     if (items.length === 0) throw new NotFoundException('No hay recibos para imprimir');
 
@@ -156,6 +171,12 @@ export class RecibosService {
     });
   }
 
+  /**
+   * Formato visual pensado para replicar el Excel "Recibos de sueldo" de Cardi:
+   * encabezado con fecha + nombre, "Recibí de", tabla Concepto | Cant | Valor |
+   * Monto, descuentos en naranja con signo negativo, total prominente abajo a la
+   * derecha y línea de firma a la izquierda. 3 recibos por hoja A4.
+   */
   private renderReciboCompacto(
     doc: PDFKit.PDFDocument,
     opts: {
@@ -185,130 +206,203 @@ export class RecibosService {
     const PRIMARY = '#4390B6';
     const TEXT = '#111827';
     const MUTED = '#6b7280';
+    const DESCUENTO = '#b45309';
 
-    // Borde exterior del recibo
-    doc.roundedRect(x, y, ancho, alto, 4).strokeColor('#d1d5db').lineWidth(0.7).stroke();
+    // Borde exterior
+    doc.roundedRect(x, y, ancho, alto, 6).strokeColor('#cbd5e1').lineWidth(0.8).stroke();
 
-    // Encabezado: logo + Cardi + info semana/obra + nombre a la derecha
+    // ========== Encabezado ==========
+    const padX = 14;
+    const headerY = y + 10;
+
+    // Logo + "Cardi" + obra + semana (izquierda)
     if (logoPath) {
       try {
-        doc.image(logoPath, x + 8, y + 8, { width: 40 });
+        doc.image(logoPath, x + padX, headerY, { width: 38 });
       } catch {
-        // ignorar si el logo no se puede embeder
+        // ignorar si no puede embeder
       }
     }
-    doc.fontSize(14).fillColor(PRIMARY).text('Cardi', x + 55, y + 10);
-    doc.fontSize(8).fillColor(MUTED).text(obraLiquidacion, x + 55, y + 28);
-    doc.fontSize(8).text(fechaSemana, x + 55, y + 40);
+    doc
+      .fontSize(13)
+      .fillColor(PRIMARY)
+      .text('Cardi', x + padX + 46, headerY + 2);
+    doc
+      .fontSize(8)
+      .fillColor(MUTED)
+      .text(`Obra: ${obraLiquidacion}`, x + padX + 46, headerY + 20);
+    doc
+      .fontSize(8)
+      .fillColor(MUTED)
+      .text(`Semana: ${fechaSemana}`, x + padX + 46, headerY + 32);
 
-    // Nombre del beneficiario (derecha arriba)
-    doc.fontSize(13).fillColor(TEXT).text(item.nombreLibre, x + ancho / 2, y + 10, {
-      width: ancho / 2 - 15,
-      align: 'right',
-    });
+    // Nombre del beneficiario (derecha grande)
+    doc
+      .fontSize(14)
+      .fillColor(TEXT)
+      .text(item.nombreLibre, x + ancho / 2, headerY, {
+        width: ancho / 2 - padX,
+        align: 'right',
+      });
+    const subY = headerY + 20;
     if (item.beneficiario?.cuitCuil) {
       doc
         .fontSize(8)
         .fillColor(MUTED)
-        .text(`CUIT/CUIL: ${item.beneficiario.cuitCuil}`, x + ancho / 2, y + 28, {
-          width: ancho / 2 - 15,
+        .text(`CUIT/CUIL: ${item.beneficiario.cuitCuil}`, x + ancho / 2, subY, {
+          width: ancho / 2 - padX,
           align: 'right',
         });
     }
-
-    // Línea separadora
     doc
-      .moveTo(x + 8, y + 56)
-      .lineTo(x + ancho - 8, y + 56)
+      .fontSize(8)
+      .fillColor(MUTED)
+      .text('Recibí de: Cardi', x + ancho / 2, subY + 12, {
+        width: ancho / 2 - padX,
+        align: 'right',
+      });
+
+    // Separador bajo header
+    const sepY = headerY + 52;
+    doc
+      .moveTo(x + padX, sepY)
+      .lineTo(x + ancho - padX, sepY)
       .strokeColor('#e5e7eb')
-      .lineWidth(0.5)
+      .lineWidth(0.6)
       .stroke();
 
-    // Tabla de conceptos
-    const tablaY = y + 62;
-    const colDesc = x + 10;
-    const colCant = x + ancho - 235;
-    const colVal = x + ancho - 160;
-    const colMonto = x + ancho - 85;
+    // ========== Tabla de conceptos ==========
+    const colDesc = x + padX;
+    const colCant = x + ancho - 220;
+    const colVal = x + ancho - 150;
+    const colMonto = x + ancho - 80;
+    const colMontoW = 70;
 
+    const headerTablaY = sepY + 6;
+    doc.fontSize(9).fillColor(TEXT).text('Descripción', colDesc, headerTablaY);
     doc.fontSize(7).fillColor(MUTED);
-    doc.text('Concepto', colDesc, tablaY);
-    doc.text('Cant.', colCant, tablaY, { width: 60, align: 'right' });
-    doc.text('Valor', colVal, tablaY, { width: 60, align: 'right' });
-    doc.text('Monto', colMonto, tablaY, { width: 75, align: 'right' });
+    doc.text('CANT.', colCant, headerTablaY + 2, { width: 55, align: 'right' });
+    doc.text('VALOR UNIT.', colVal, headerTablaY + 2, { width: 60, align: 'right' });
+    doc.text('MONTO', colMonto, headerTablaY + 2, { width: colMontoW, align: 'right' });
 
-    let rowY = tablaY + 12;
-    const maxFilas = Math.min(item.conceptos.length, 8);
-    for (let i = 0; i < maxFilas; i++) {
+    // Línea tenue bajo el header de tabla
+    const tablaStartY = headerTablaY + 14;
+    doc
+      .moveTo(x + padX, tablaStartY - 2)
+      .lineTo(x + ancho - padX, tablaStartY - 2)
+      .strokeColor('#e5e7eb')
+      .lineWidth(0.4)
+      .stroke();
+
+    const rowHeight = 12;
+    const pieY = y + alto - 34;
+    const maxFilas = Math.floor((pieY - tablaStartY) / rowHeight) - 1;
+    const filasAMostrar = Math.min(item.conceptos.length, maxFilas);
+
+    let rowY = tablaStartY;
+    for (let i = 0; i < filasAMostrar; i++) {
       const c = item.conceptos[i];
       const signo = SIGNO[c.tipo];
       const monto = Number(c.monto);
-      doc.fontSize(8).fillColor(TEXT);
-      const etiqueta = `${ETIQUETA[c.tipo]}`;
-      doc.text(etiqueta, colDesc, rowY, { width: 60, continued: false });
-      doc
-        .fontSize(8)
-        .fillColor(TEXT)
-        .text(`${c.descripcion}${c.obra ? ` (${c.obra.nombre})` : ''}`, colDesc + 65, rowY, {
-          width: colCant - colDesc - 70,
-        });
+
+      // Columna descripción: "Semana" o "Préstamo" o el que sea, en bold,
+      // seguido del texto descriptivo. Si imputa a otra obra, lo anoto al final.
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(TEXT);
+      doc.text(ETIQUETA[c.tipo], colDesc, rowY, { continued: true });
+      doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+      const sufijoObra = c.obra ? ` · ${c.obra.nombre}` : '';
+      doc.text(
+        c.descripcion ? `  —  ${c.descripcion}${sufijoObra}` : sufijoObra,
+        {
+          width: colCant - colDesc - 10,
+          lineBreak: false,
+        },
+      );
+
+      // Cantidad, valor unitario
       if (c.cantidad) {
-        doc.fontSize(8).fillColor(MUTED).text(Number(c.cantidad).toString(), colCant, rowY, {
-          width: 60,
-          align: 'right',
-        });
+        doc
+          .font('Helvetica')
+          .fontSize(8)
+          .fillColor(MUTED)
+          .text(Number(c.cantidad).toString(), colCant, rowY, {
+            width: 55,
+            align: 'right',
+          });
       }
       if (c.valorUnitario) {
-        doc.text(formatearMonto(c.valorUnitario.toString(), Moneda.ARS), colVal, rowY, {
-          width: 60,
-          align: 'right',
-        });
+        doc
+          .fontSize(8)
+          .fillColor(MUTED)
+          .text(formatearMonto(c.valorUnitario.toString(), Moneda.ARS), colVal, rowY, {
+            width: 60,
+            align: 'right',
+          });
       }
+      // Monto (signo negativo visible en naranja para descuentos)
+      const colorMonto = signo === -1 ? DESCUENTO : signo === 0 ? MUTED : TEXT;
+      const prefix = signo === -1 ? '-' : '';
       doc
-        .fontSize(8)
-        .fillColor(signo === -1 ? '#b45309' : signo === 0 ? MUTED : TEXT)
+        .font(signo === 0 ? 'Helvetica-Oblique' : 'Helvetica')
+        .fontSize(8.5)
+        .fillColor(colorMonto)
         .text(
-          signo === 0 ? '—' : formatearMonto(Math.abs(monto).toString(), Moneda.ARS),
+          signo === 0
+            ? '—'
+            : `${prefix}${formatearMonto(Math.abs(monto).toString(), Moneda.ARS)}`,
           colMonto,
           rowY,
-          { width: 75, align: 'right' },
+          { width: colMontoW, align: 'right' },
         );
-      rowY += 12;
+      rowY += rowHeight;
     }
-    if (item.conceptos.length > maxFilas) {
+    if (item.conceptos.length > filasAMostrar) {
       doc
+        .font('Helvetica-Oblique')
         .fontSize(7)
         .fillColor(MUTED)
-        .text(`+ ${item.conceptos.length - maxFilas} conceptos más…`, colDesc, rowY);
+        .text(
+          `+ ${item.conceptos.length - filasAMostrar} concepto(s) más — ver detalle en el sistema`,
+          colDesc,
+          rowY,
+        );
     }
 
-    // Total y firmas al pie del recibo
-    const pieY = y + alto - 30;
+    // ========== Pie: firma + total ==========
+    // Separador grueso antes del total
     doc
-      .moveTo(x + 8, pieY - 6)
-      .lineTo(x + ancho - 8, pieY - 6)
-      .strokeColor('#e5e7eb')
-      .lineWidth(0.5)
+      .moveTo(x + padX, pieY - 4)
+      .lineTo(x + ancho - padX, pieY - 4)
+      .strokeColor('#cbd5e1')
+      .lineWidth(0.6)
       .stroke();
 
-    // Firma
-    doc.fontSize(8).fillColor(MUTED).text('Firma:', x + 10, pieY);
+    // Firma (izquierda)
+    doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Firma:', x + padX, pieY + 10);
     doc
-      .moveTo(x + 40, pieY + 10)
-      .lineTo(x + 200, pieY + 10)
-      .strokeColor('#999')
-      .lineWidth(0.3)
+      .moveTo(x + padX + 32, pieY + 20)
+      .lineTo(x + padX + 230, pieY + 20)
+      .strokeColor('#94a3b8')
+      .lineWidth(0.4)
       .stroke();
 
-    // Total
-    doc.fontSize(9).fillColor(MUTED).text('Total:', colVal, pieY, { width: 60, align: 'right' });
+    // Total (derecha, prominente)
     doc
-      .fontSize(13)
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor(MUTED)
+      .text('TOTAL A PAGAR', colVal, pieY + 2, { width: 60, align: 'right' });
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(16)
       .fillColor(PRIMARY)
-      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), colMonto, pieY - 2, {
-        width: 75,
+      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), colMonto - 10, pieY + 14, {
+        width: colMontoW + 10,
         align: 'right',
       });
+
+    // Reset font para próximos elementos
+    doc.font('Helvetica');
   }
 
   async ensureLiquidacionPdf(

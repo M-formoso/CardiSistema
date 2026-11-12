@@ -155,12 +155,16 @@ export function LiquidacionDetallePage() {
               </Button>
             </>
           )}
-          {liq.items.length > 0 && (
-            <Button variant="outline" onClick={() => imprimirRecibos(liq.id)}>
-              <Printer className="h-4 w-4 mr-1" />
-              Imprimir recibos
-            </Button>
-          )}
+          {/* El recibo se descarga solo cuando ya hubo pago (parcial o total) */}
+          {liq.items.length > 0 &&
+            (liq.estado === 'PAGADA_PARCIAL' ||
+              liq.estado === 'PAGADA' ||
+              liq.estado === 'CERRADA') && (
+              <Button variant="outline" onClick={() => imprimirRecibos(liq.id)}>
+                <Printer className="h-4 w-4 mr-1" />
+                Imprimir recibos
+              </Button>
+            )}
           {esPagable && saldo > 0 && (
             <Button onClick={() => setPagandoOpen(true)}>
               <Wallet className="h-4 w-4 mr-1" />
