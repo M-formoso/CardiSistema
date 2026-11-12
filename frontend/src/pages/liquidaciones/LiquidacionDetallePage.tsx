@@ -2,7 +2,16 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Plus, Printer, Receipt, Trash2, Wallet } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Printer,
+  Receipt,
+  Trash2,
+  Wallet,
+} from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -254,11 +263,13 @@ export function LiquidacionDetallePage() {
           saldoPendiente={saldo}
           onClose={() => setPagandoOpen(false)}
           onPaid={() => {
+            // Solo refresca queries — el dialog muestra vista de éxito y
+            // se cierra cuando el usuario toca "Cerrar" o descarga el recibo.
             qc.invalidateQueries({ queryKey: ['liquidaciones', id] });
             qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+            qc.invalidateQueries({ queryKey: ['certificaciones'] });
             qc.invalidateQueries({ queryKey: ['movimientos'] });
             qc.invalidateQueries({ queryKey: ['cajas', 'saldos'] });
-            setPagandoOpen(false);
           }}
         />
       )}
@@ -834,6 +845,13 @@ function ConceptoRow({
 
 // ========== Pagar ==========
 
+type PagoResultado = {
+  estado: EstadoLiquidacion;
+  montoPagado: string;
+  saldoPendiente: string;
+  recibosCreados: string[];
+};
+
 function PagarDialog({
   liquidacionId,
   saldoPendiente,
@@ -843,6 +861,7 @@ function PagarDialog({
   liquidacionId: string;
   saldoPendiente: number;
   onClose: () => void;
+  /** Se llama tras cada pago exitoso para refrescar queries. NO cierra el dialog. */
   onPaid: () => void;
 }) {
   const [cajaId, setCajaId] = useState('');
@@ -852,6 +871,8 @@ function PagarDialog({
   const [fechaPago, setFechaPago] = useState(() => new Date().toISOString().slice(0, 10));
   const [monto, setMonto] = useState<string>(saldoPendiente.toFixed(2));
   const [observaciones, setObservaciones] = useState('');
+  const [resultado, setResultado] = useState<PagoResultado | null>(null);
+  const [descargando, setDescargando] = useState(false);
 
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
@@ -871,12 +892,13 @@ function PagarDialog({
         observaciones: observaciones.trim() || undefined,
       }),
     onSuccess: (data) => {
-      toast.success(
-        data.estado === 'PAGADA'
-          ? `Pago registrado · liquidación cerrada · ${data.recibosCreados.length} recibos emitidos`
-          : `Pago parcial registrado · saldo $${data.saldoPendiente}`,
-      );
-      onPaid();
+      setResultado({
+        estado: data.estado,
+        montoPagado: data.montoPagado,
+        saldoPendiente: data.saldoPendiente,
+        recibosCreados: data.recibosCreados,
+      });
+      onPaid(); // refresca queries del parent pero NO cierra el dialog
     },
     onError: (e) =>
       toast.error(
@@ -885,13 +907,112 @@ function PagarDialog({
       ),
   });
 
+  async function descargarRecibo() {
+    try {
+      setDescargando(true);
+      const res = await apiClient.get(`/recibos/liquidacion/${liquidacionId}/pdf`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data as BlobPart], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (e) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          'No se pudo generar el PDF',
+      );
+    } finally {
+      setDescargando(false);
+    }
+  }
+
+  // ========== Vista de éxito post-pago ==========
+  if (resultado) {
+    const observacionesTxt = observaciones.trim();
+    return (
+      <Dialog open onOpenChange={(v) => !v && onClose()}>
+        <DialogContent>
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div>
+                <DialogTitle>Pago registrado con éxito</DialogTitle>
+                <DialogDescription>
+                  {resultado.estado === 'PAGADA'
+                    ? 'La liquidación quedó pagada por completo.'
+                    : 'La liquidación quedó con pago parcial.'}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="rounded-md border border-border bg-muted/5 p-4 space-y-2.5 text-sm">
+            <ResumenFila label="Monto pagado">
+              <span className="font-bold num text-primary">
+                {formatearMonto(resultado.montoPagado, 'ARS')}
+              </span>
+            </ResumenFila>
+            <ResumenFila label="Medio de pago">{medioPagoLabel(medioPago)}</ResumenFila>
+            <ResumenFila label="Caja">
+              {cajasArs.find((c) => c.id === cajaId)?.nombre ?? '—'}
+            </ResumenFila>
+            <ResumenFila label="Fecha">{formatearFecha(fechaPago)}</ResumenFila>
+            {observacionesTxt && (
+              <ResumenFila label="Concepto">{observacionesTxt}</ResumenFila>
+            )}
+            {Number(resultado.saldoPendiente) > 0 && (
+              <ResumenFila label="Saldo pendiente">
+                <span className="font-medium num text-warning">
+                  {formatearMonto(resultado.saldoPendiente, 'ARS')}
+                </span>
+              </ResumenFila>
+            )}
+            {resultado.estado === 'PAGADA' && resultado.recibosCreados.length > 0 && (
+              <ResumenFila label="Recibos emitidos">
+                {resultado.recibosCreados.length}
+              </ResumenFila>
+            )}
+          </div>
+
+          <p className="text-xs text-muted">
+            El recibo se genera con el logo de Cardi, la obra, la semana y el detalle de cada
+            persona pagada (3 recibos por hoja A4).
+          </p>
+
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cerrar
+            </Button>
+            <Button type="button" onClick={descargarRecibo} disabled={descargando}>
+              {descargando ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Generando…
+                </>
+              ) : (
+                <>
+                  <Printer className="h-4 w-4 mr-1" />
+                  Descargar recibo
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ========== Vista de formulario ==========
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Pagar liquidación</DialogTitle>
           <DialogDescription>
-            Saldo pendiente: <span className="font-medium num">{formatearMonto(saldoPendiente, 'ARS')}</span>.
+            Saldo pendiente:{' '}
+            <span className="font-medium num">{formatearMonto(saldoPendiente, 'ARS')}</span>.
             Podés pagar total o parcial.
           </DialogDescription>
         </DialogHeader>
@@ -958,11 +1079,11 @@ function PagarDialog({
             )}
           </div>
           <div className="space-y-2">
-            <Label>Observaciones</Label>
+            <Label>Concepto / observaciones</Label>
             <Input
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Notas internas del pago"
+              placeholder="Pago semanal, adelanto, etc."
             />
           </div>
           <DialogFooter>
@@ -970,11 +1091,39 @@ function PagarDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={m.isPending}>
-              {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmar pago'}
+              {m.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Confirmar pago'
+              )}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+function ResumenFila({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted">{label}</span>
+      <span className="text-right">{children}</span>
+    </div>
+  );
+}
+
+function medioPagoLabel(m: string): string {
+  switch (m) {
+    case 'EFECTIVO':
+      return 'Efectivo';
+    case 'TRANSFERENCIA':
+      return 'Transferencia';
+    case 'CHEQUE_PROPIO':
+      return 'Cheque propio';
+    case 'CHEQUE_TERCERO':
+      return 'Cheque tercero';
+    default:
+      return m;
+  }
 }
