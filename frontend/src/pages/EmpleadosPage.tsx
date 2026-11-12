@@ -120,9 +120,9 @@ export function EmpleadosPage() {
           value={filtroSituacion}
           onChange={(e) => setFiltroSituacion(e.target.value as SituacionFiscal | '')}
         >
-          <option value="">Toda situación</option>
-          <option value="BLANCO">En blanco</option>
-          <option value="NEGRO">En negro</option>
+          <option value="">Declarado y no declarado</option>
+          <option value="BLANCO">Declarado</option>
+          <option value="NEGRO">No declarado</option>
         </Select>
       </div>
 
@@ -177,7 +177,7 @@ export function EmpleadosPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={emp.legajo?.situacionFiscal === 'BLANCO' ? 'success' : 'muted'}>
-                      {emp.legajo?.situacionFiscal === 'BLANCO' ? 'En blanco' : 'En negro'}
+                      {emp.legajo?.situacionFiscal === 'BLANCO' ? 'Declarado' : 'No declarado'}
                     </Badge>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
@@ -373,8 +373,8 @@ function EmpleadoDialog({
                 value={situacion}
                 onChange={(e) => setSituacion(e.target.value as SituacionFiscal)}
               >
-                <option value="BLANCO">En blanco</option>
-                <option value="NEGRO">En negro</option>
+                <option value="BLANCO">Declarado</option>
+                <option value="NEGRO">No declarado</option>
               </Select>
             </div>
             <div className="space-y-2">

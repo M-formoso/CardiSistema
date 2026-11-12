@@ -22,6 +22,7 @@
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "admin:reset": "ts-node prisma/scripts/reset-admin.ts",
+    "empleados:cargar": "ts-node prisma/scripts/cargar-empleados.ts",
     "db:studio": "prisma studio",
     "migracion": "ts-node src/modules/migracion/cli.ts"
   },

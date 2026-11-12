@@ -96,7 +96,7 @@ export function EmpleadoDetallePage() {
             </Badge>
             {legajo?.situacionFiscal && (
               <Badge variant={legajo.situacionFiscal === 'BLANCO' ? 'success' : 'muted'}>
-                {legajo.situacionFiscal === 'BLANCO' ? 'En blanco' : 'En negro'}
+                {legajo.situacionFiscal === 'BLANCO' ? 'Declarado' : 'No declarado'}
               </Badge>
             )}
           </div>
