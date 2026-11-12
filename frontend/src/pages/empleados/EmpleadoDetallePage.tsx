@@ -107,7 +107,7 @@ export function EmpleadoDetallePage() {
         </div>
         <Button variant="outline" onClick={() => setActualizarJornalOpen(true)}>
           <TrendingUp className="h-4 w-4 mr-1" />
-          Actualizar jornal
+          Jornales y actualizaciones
         </Button>
       </div>
 
@@ -326,11 +326,11 @@ export function EmpleadoDetallePage() {
         <ActualizarJornalDialog
           empleadoId={emp.id}
           jornalActual={legajo?.jornal ?? null}
+          valorHoraExtraActual={legajo?.valorHoraExtra ?? null}
           onClose={() => setActualizarJornalOpen(false)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['empleado', id] });
             qc.invalidateQueries({ queryKey: ['empleado-jornales', id] });
-            setActualizarJornalOpen(false);
           }}
         />
       )}
@@ -383,27 +383,41 @@ function Dato({
 function ActualizarJornalDialog({
   empleadoId,
   jornalActual,
+  valorHoraExtraActual,
   onClose,
   onSaved,
 }: {
   empleadoId: string;
   jornalActual: string | null;
+  valorHoraExtraActual: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [jornal, setJornal] = useState(jornalActual ?? '');
-  const [horaExtra, setHoraExtra] = useState('');
+  const [horaExtra, setHoraExtra] = useState(valorHoraExtraActual ?? '');
+  const [vigenteDesde, setVigenteDesde] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [motivo, setMotivo] = useState('');
+
+  const { data: historial = [], refetch: refetchHistorial, isLoading: cargandoHistorial } =
+    useQuery({
+      queryKey: ['empleado-jornales', empleadoId],
+      queryFn: () => empleadosService.historialJornales(empleadoId),
+    });
 
   const m = useMutation({
     mutationFn: () =>
       empleadosService.actualizarJornal(empleadoId, {
         jornal: Number(jornal),
         valorHoraExtra: horaExtra ? Number(horaExtra) : undefined,
+        vigenteDesde,
         motivo: motivo.trim() || undefined,
       }),
     onSuccess: () => {
-      toast.success('Jornal actualizado');
+      toast.success('Jornal actualizado y registrado en el historial');
+      setMotivo('');
+      void refetchHistorial();
       onSaved();
     },
     onError: (e) =>
@@ -415,23 +429,27 @@ function ActualizarJornalDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Actualizar jornal</DialogTitle>
+          <DialogTitle>Jornales y actualizaciones</DialogTitle>
           <DialogDescription>
-            Queda en el historial del empleado. Para actualizar a un grupo, usá Configuración →
+            Registrá un nuevo jornal y revisá el historial completo de cambios. Cada actualización
+            queda con fecha y motivo. Para actualizar a todo un grupo, usá Configuración →
             Categorías empleado.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Formulario de nuevo cambio */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (!jornal || Number(jornal) <= 0) return toast.error('Jornal inválido');
             m.mutate();
           }}
-          className="space-y-4"
+          className="space-y-4 border-b border-border pb-5"
         >
-          <div className="grid grid-cols-2 gap-3">
+          <h3 className="text-sm font-semibold">Nueva actualización</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label>Nuevo jornal *</Label>
               <Input
@@ -441,30 +459,110 @@ function ActualizarJornalDialog({
                 onChange={(e) => setJornal(e.target.value)}
                 required
               />
+              {jornalActual && (
+                <p className="text-xs text-muted">
+                  Actual: {formatearMonto(jornalActual, 'ARS')}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label>Hora extra</Label>
+              <Label>Valor hora extra</Label>
               <Input
                 type="number"
                 step="0.01"
                 value={horaExtra}
                 onChange={(e) => setHoraExtra(e.target.value)}
               />
+              <p className="text-xs text-muted">
+                Sugerido: {((Number(jornal) / 8) * 1.5 || 0).toFixed(2)}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Vigente desde *</Label>
+              <Input
+                type="date"
+                value={vigenteDesde}
+                onChange={(e) => setVigenteDesde(e.target.value)}
+                required
+              />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Motivo</Label>
-            <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <Input
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Paritarias, ajuste noviembre, promoción…"
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={onClose}>
-              Cancelar
-            </Button>
+          <div className="flex justify-end">
             <Button type="submit" disabled={m.isPending}>
-              {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Actualizar'}
+              {m.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Registrar actualización'
+              )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
+
+        {/* Historial completo */}
+        <div className="space-y-3 pt-2">
+          <h3 className="text-sm font-semibold">
+            Historial de actualizaciones ({historial.length})
+          </h3>
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha vigencia</TableHead>
+                  <TableHead className="text-right">Jornal</TableHead>
+                  <TableHead className="text-right">Hora extra</TableHead>
+                  <TableHead>Motivo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cargandoHistorial && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted py-6">
+                      <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
+                      Cargando…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!cargandoHistorial && historial.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted py-6">
+                      Sin cambios registrados. Al guardar arriba aparece acá.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {historial.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell className="text-sm">
+                      {formatearFecha(h.vigenteDesde)}
+                    </TableCell>
+                    <TableCell className="num text-right font-medium">
+                      {formatearMonto(h.jornal, 'ARS')}
+                    </TableCell>
+                    <TableCell className="num text-right text-xs">
+                      {h.valorHoraExtra
+                        ? formatearMonto(h.valorHoraExtra, 'ARS')
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted">{h.motivo ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onClose}>
+            Cerrar
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
