@@ -19,3 +19,15 @@ export const UpdateCajaSchema = z
   })
   .partial();
 export class UpdateCajaDto extends createZodDto(UpdateCajaSchema) {}
+
+/**
+ * Ajuste manual del saldo. En vez de pisar `saldoInicial`, se crea un
+ * Movimiento con origen=AJUSTE por la diferencia (INGRESO si falta plata,
+ * EGRESO si sobra). Queda en el libro con usuario y motivo.
+ */
+export const AjustarSaldoSchema = z.object({
+  saldoObjetivo: z.coerce.number(),
+  motivo: z.string().min(3).max(500),
+  fecha: z.coerce.date().optional(),
+});
+export class AjustarSaldoDto extends createZodDto(AjustarSaldoSchema) {}

@@ -17,6 +17,27 @@ export type SaldoCaja = {
   saldo: string;
 };
 
+export type AjusteSaldo = {
+  id: string;
+  fecha: string;
+  tipo: 'INGRESO' | 'EGRESO';
+  monto: string;
+  moneda: 'ARS' | 'USD';
+  motivo: string;
+  estado: string;
+  hechoPor: { id: string; nombre: string; username: string } | null;
+  createdAt: string;
+};
+
+export type AjusteResultado = {
+  movimientoId: string;
+  saldoAnterior: string;
+  saldoActual: string;
+  diferencia: string;
+  tipo: 'INGRESO' | 'EGRESO';
+  motivo: string;
+};
+
 export const cajasService = {
   list: async (soloActivas = false) => {
     const { data } = await apiClient.get<Caja[]>('/cajas', {
@@ -38,6 +59,20 @@ export const cajasService = {
   },
   desactivar: async (id: string) => {
     const { data } = await apiClient.delete<Caja>(`/cajas/${id}`);
+    return data;
+  },
+  ajustarSaldo: async (
+    id: string,
+    input: { saldoObjetivo: number; motivo: string; fecha?: string },
+  ) => {
+    const { data } = await apiClient.post<AjusteResultado>(
+      `/cajas/${id}/ajustar-saldo`,
+      input,
+    );
+    return data;
+  },
+  historialAjustes: async (id: string) => {
+    const { data } = await apiClient.get<AjusteSaldo[]>(`/cajas/${id}/ajustes`);
     return data;
   },
 };

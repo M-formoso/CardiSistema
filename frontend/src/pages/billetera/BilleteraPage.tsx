@@ -38,8 +38,10 @@ import { TransferirDialog } from '@/pages/movimientos/TransferirDialog';
 import { CambioMonedaDialog } from '@/pages/movimientos/CambioMonedaDialog';
 import { CarteraChequesDialog } from './CarteraChequesDialog';
 import { NuevoChequeDialog } from './NuevoChequeDialog';
+import { GestionCuentasDialog } from './GestionCuentasDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
+import { Landmark } from 'lucide-react';
 
 type MonedaFiltro = 'TODAS' | 'ARS' | 'USD';
 
@@ -71,6 +73,7 @@ export function BilleteraPage() {
   const [openCambio, setOpenCambio] = useState(false);
   const [openCartera, setOpenCartera] = useState(false);
   const [openNuevoCheque, setOpenNuevoCheque] = useState(false);
+  const [openCuentas, setOpenCuentas] = useState(false);
 
   // ---------- Data ----------
   const { data: cajas = [] } = useQuery({
@@ -212,7 +215,11 @@ export function BilleteraPage() {
               onCambio={() => setOpenCambio(true)}
               onCheque={() => setOpenNuevoCheque(true)}
             />
-            <HerramientasMenu onCartera={() => setOpenCartera(true)} onRefrescar={refrescar} />
+            <HerramientasMenu
+              onCartera={() => setOpenCartera(true)}
+              onCuentas={() => setOpenCuentas(true)}
+              onRefrescar={refrescar}
+            />
           </div>
         </div>
 
@@ -533,6 +540,7 @@ export function BilleteraPage() {
         }}
       />
       {openCartera && <CarteraChequesDialog onClose={() => setOpenCartera(false)} />}
+      {openCuentas && <GestionCuentasDialog onClose={() => setOpenCuentas(false)} />}
     </div>
   );
 }
@@ -721,9 +729,11 @@ function NuevoMenu({
 
 function HerramientasMenu({
   onCartera,
+  onCuentas,
   onRefrescar,
 }: {
   onCartera: () => void;
+  onCuentas: () => void;
   onRefrescar: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -742,6 +752,15 @@ function HerramientasMenu({
       </Button>
       {open && (
         <div className="absolute right-0 top-full mt-2 w-60 bg-card border border-border rounded-lg shadow-xl z-30 overflow-hidden text-foreground">
+          <MenuItem
+            icon={<Landmark className="h-4 w-4 text-primary" />}
+            label="Cuentas"
+            hint="Saldos, alta y ajustes"
+            onClick={() => {
+              setOpen(false);
+              onCuentas();
+            }}
+          />
           <MenuItem
             icon={<ScrollText className="h-4 w-4 text-primary" />}
             label="Cartera de cheques"

@@ -1,8 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoMovimiento, Prisma, TipoMovimiento } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  CotizacionTipo,
+  EstadoMovimiento,
+  MedioPago,
+  Moneda,
+  OrigenMovimiento,
+  Prisma,
+  TipoMovimiento,
+} from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import type { CreateCajaDto, UpdateCajaDto } from './dto/cajas.dto';
+import type { AjustarSaldoDto, CreateCajaDto, UpdateCajaDto } from './dto/cajas.dto';
 
 /**
  * Las cajas no cachean saldo: se deriva de los movimientos CONFIRMADOS
@@ -86,6 +95,103 @@ export class CajasService {
       where: { id },
       data: { activo: false, updatedById: userId },
     });
+  }
+
+  /**
+   * Ajuste manual del saldo. Crea un Movimiento con origen=AJUSTE por la
+   * diferencia entre saldo actual y objetivo. Queda en el libro con el
+   * usuario que lo hizo y el motivo — es la fuente del historial.
+   */
+  async ajustarSaldo(id: string, dto: AjustarSaldoDto, userId: string) {
+    const caja = await this.findOne(id);
+    if (!caja.activo) throw new BadRequestException('La caja está inactiva');
+
+    const saldoActual = await this.calcularSaldo(id);
+    const objetivo = new Prisma.Decimal(dto.saldoObjetivo.toFixed(2));
+    const diferencia = objetivo.minus(saldoActual);
+
+    if (diferencia.abs().lt(0.01)) {
+      throw new BadRequestException(
+        `El saldo ya coincide con el objetivo ($${saldoActual.toFixed(2)})`,
+      );
+    }
+
+    const tipo = diferencia.gt(0) ? TipoMovimiento.INGRESO : TipoMovimiento.EGRESO;
+    const monto = diferencia.abs();
+    const fecha = dto.fecha ?? new Date();
+
+    // Para el campo cotización usamos valores neutrales — el ajuste no se
+    // convierte a USD (se registra en la moneda de la caja).
+    const cotizacion = new Prisma.Decimal(1);
+    const montoEnMoneda = monto.toFixed(2);
+
+    const mov = await this.prisma.movimiento.create({
+      data: {
+        tipo,
+        fecha,
+        cajaId: caja.id,
+        moneda: caja.moneda,
+        monto,
+        medioPago: MedioPago.EFECTIVO,
+        descripcion: `Ajuste de saldo: ${dto.motivo}`,
+        cotizacion,
+        cotizacionTipo: CotizacionTipo.MANUAL,
+        montoArs: new Prisma.Decimal(caja.moneda === Moneda.ARS ? montoEnMoneda : '0'),
+        montoUsd: new Prisma.Decimal(caja.moneda === Moneda.USD ? montoEnMoneda : '0'),
+        grupoId: randomUUID(),
+        origen: OrigenMovimiento.AJUSTE,
+        estado: EstadoMovimiento.CONFIRMADO,
+        createdById: userId,
+        updatedById: userId,
+      },
+    });
+
+    void this.audit.registrar({
+      usuarioId: userId,
+      accion: 'ACTUALIZAR',
+      entidad: 'Caja',
+      entidadId: id,
+      observacion: `Ajuste ${tipo === TipoMovimiento.INGRESO ? '+' : '-'}$${monto.toFixed(2)} (${caja.nombre}) · ${dto.motivo}`,
+    });
+
+    return {
+      movimientoId: mov.id,
+      saldoAnterior: saldoActual.toFixed(2),
+      saldoActual: objetivo.toFixed(2),
+      diferencia: diferencia.toFixed(2),
+      tipo,
+      motivo: dto.motivo,
+    };
+  }
+
+  /**
+   * Historial de ajustes manuales de saldo de una caja (movimientos con
+   * origen=AJUSTE). Incluye usuario que lo hizo, motivo (del campo
+   * descripcion sin el prefijo "Ajuste de saldo:"), fecha y monto.
+   */
+  async historialAjustes(id: string) {
+    await this.findOne(id);
+    const movs = await this.prisma.movimiento.findMany({
+      where: { cajaId: id, origen: OrigenMovimiento.AJUSTE },
+      orderBy: { fecha: 'desc' },
+      include: {
+        createdBy: { select: { id: true, nombre: true, username: true } },
+      },
+      take: 200,
+    });
+    return movs.map((m) => ({
+      id: m.id,
+      fecha: m.fecha,
+      tipo: m.tipo, // INGRESO = subió el saldo, EGRESO = bajó
+      monto: m.monto.toString(),
+      moneda: m.moneda,
+      motivo: m.descripcion?.replace(/^Ajuste de saldo:\s*/i, '') ?? '',
+      estado: m.estado,
+      hechoPor: m.createdBy
+        ? { id: m.createdBy.id, nombre: m.createdBy.nombre, username: m.createdBy.username }
+        : null,
+      createdAt: m.createdAt,
+    }));
   }
 
   /**

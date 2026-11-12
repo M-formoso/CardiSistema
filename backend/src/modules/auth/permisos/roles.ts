@@ -19,7 +19,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     'empleados:ver', 'empleados:crear', 'empleados:editar',
     'categorias_empleados:ver', 'categorias_empleados:crear', 'categorias_empleados:editar',
     'categorias:ver', 'categorias:crear', 'categorias:editar',
-    'cajas:ver',
+    'cajas:ver', 'cajas:crear', 'cajas:editar',
 
     // Billetera
     'cotizaciones:ver',

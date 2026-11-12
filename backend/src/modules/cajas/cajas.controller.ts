@@ -3,7 +3,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { CajasService } from './cajas.service';
-import { CreateCajaDto, UpdateCajaDto } from './dto/cajas.dto';
+import { AjustarSaldoDto, CreateCajaDto, UpdateCajaDto } from './dto/cajas.dto';
 
 @Controller('cajas')
 export class CajasController {
@@ -47,5 +47,21 @@ export class CajasController {
   @RequirePermission('cajas', 'desactivar')
   desactivar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.cajas.desactivar(id, user.id);
+  }
+
+  @Post(':id/ajustar-saldo')
+  @RequirePermission('cajas', 'editar')
+  ajustarSaldo(
+    @Param('id') id: string,
+    @Body() dto: AjustarSaldoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.cajas.ajustarSaldo(id, dto, user.id);
+  }
+
+  @Get(':id/ajustes')
+  @RequirePermission('cajas', 'ver')
+  historialAjustes(@Param('id') id: string) {
+    return this.cajas.historialAjustes(id);
   }
 }
