@@ -333,32 +333,6 @@ export function BilleteraPage() {
 
       {/* ==================== BODY ==================== */}
       <div className="px-4 sm:px-8 lg:px-12 py-6 space-y-6">
-        {/* Saldos por caja */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted mb-2 uppercase tracking-wider">
-            Cajas y cuentas
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {saldos.map((s) => (
-              <button
-                key={s.cajaId}
-                onClick={() => setCajaId(s.cajaId === cajaId ? '' : s.cajaId)}
-                className={`rounded-lg border p-3 text-left transition-colors ${
-                  cajaId === s.cajaId
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border bg-card hover:bg-muted/5'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-muted truncate">{s.nombre}</span>
-                  <Badge variant="muted">{s.moneda}</Badge>
-                </div>
-                <div className="text-lg font-bold num">{formatearMonto(s.saldo, s.moneda)}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Movimientos */}
         <div>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-2 gap-3">
