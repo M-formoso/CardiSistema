@@ -41,7 +41,15 @@ import { NuevoChequeDialog } from './NuevoChequeDialog';
 import { GestionCuentasDialog } from './GestionCuentasDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
-import { Landmark } from 'lucide-react';
+import { Landmark, Filter } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 type MonedaFiltro = 'TODAS' | 'ARS' | 'USD';
 
@@ -74,6 +82,8 @@ export function BilleteraPage() {
   const [openCartera, setOpenCartera] = useState(false);
   const [openNuevoCheque, setOpenNuevoCheque] = useState(false);
   const [openCuentas, setOpenCuentas] = useState(false);
+  const [openFiltrosMobile, setOpenFiltrosMobile] = useState(false);
+  const [openFiltrosMovsMobile, setOpenFiltrosMovsMobile] = useState(false);
 
   // ---------- Data ----------
   const { data: cajas = [] } = useQuery({
@@ -210,6 +220,18 @@ export function BilleteraPage() {
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <CotizacionBadge variant="dark" />
+            {/* Botón Filtros — solo mobile */}
+            <Button
+              variant="outline"
+              onClick={() => setOpenFiltrosMobile(true)}
+              className="md:hidden bg-white/10 border-white/20 text-white hover:bg-white/20"
+            >
+              <Filter className="h-4 w-4 mr-1" />
+              Filtros
+              {(cajaId || moneda !== 'TODAS') && (
+                <span className="ml-1 h-2 w-2 rounded-full bg-primary" />
+              )}
+            </Button>
             <NuevoMenu
               onIngreso={() => setOpenIngreso(true)}
               onEgreso={() => setOpenEgreso(true)}
@@ -225,8 +247,8 @@ export function BilleteraPage() {
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {/* Filtros — solo desktop (en mobile van al dialog "Filtros") */}
+        <div className="hidden md:grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div>
             <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
               Caja
@@ -337,11 +359,24 @@ export function BilleteraPage() {
       <div className="flex-1 min-h-0 flex flex-col bg-card">
         {/* Filtros fijos arriba */}
         <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-3 bg-card">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 lg:justify-start lg:gap-6">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Movimientos
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Botón Filtros — solo mobile */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpenFiltrosMovsMobile(true)}
+              className="md:hidden h-8 text-xs"
+            >
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              Filtros
+              {(tipo || obraId || categoriaId || q) && (
+                <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </Button>
+            <div className="hidden md:grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 w-full lg:w-auto">
               <Combobox
                 size="sm"
                 className="w-full lg:w-36"
@@ -522,7 +557,200 @@ export function BilleteraPage() {
       />
       {openCartera && <CarteraChequesDialog onClose={() => setOpenCartera(false)} />}
       {openCuentas && <GestionCuentasDialog onClose={() => setOpenCuentas(false)} />}
+
+      {/* ==================== DIALOGS DE FILTROS (mobile) ==================== */}
+      {openFiltrosMobile && (
+        <FiltrosGlobalesMobile
+          cajas={cajas}
+          cajaId={cajaId}
+          setCajaId={setCajaId}
+          moneda={moneda}
+          setMoneda={setMoneda}
+          desde={desde}
+          setDesde={setDesde}
+          hasta={hasta}
+          setHasta={setHasta}
+          onClose={() => setOpenFiltrosMobile(false)}
+        />
+      )}
+      {openFiltrosMovsMobile && (
+        <FiltrosMovimientosMobile
+          obras={obras}
+          categorias={categorias}
+          tipo={tipo}
+          setTipo={setTipo}
+          obraId={obraId}
+          setObraId={setObraId}
+          categoriaId={categoriaId}
+          setCategoriaId={setCategoriaId}
+          q={q}
+          setQ={setQ}
+          onClose={() => setOpenFiltrosMovsMobile(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ======================================================================
+// Dialogs de filtros mobile
+// ======================================================================
+
+function FiltrosGlobalesMobile({
+  cajas,
+  cajaId,
+  setCajaId,
+  moneda,
+  setMoneda,
+  desde,
+  setDesde,
+  hasta,
+  setHasta,
+  onClose,
+}: {
+  cajas: Array<{ id: string; nombre: string; moneda: string }>;
+  cajaId: string;
+  setCajaId: (v: string) => void;
+  moneda: MonedaFiltro;
+  setMoneda: (v: MonedaFiltro) => void;
+  desde: string;
+  setDesde: (v: string) => void;
+  hasta: string;
+  setHasta: (v: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Filtros</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Caja</Label>
+            <Combobox
+              options={cajas.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda }))}
+              value={cajaId}
+              onChange={setCajaId}
+              allLabel="Todas las cajas"
+              searchPlaceholder="Buscar caja…"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Moneda</Label>
+            <Select value={moneda} onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}>
+              <option value="TODAS">Todas</option>
+              <option value="ARS">ARS</option>
+              <option value="USD">USD</option>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Desde</Label>
+              <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Hasta</Label>
+              <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Aplicar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FiltrosMovimientosMobile({
+  obras,
+  categorias,
+  tipo,
+  setTipo,
+  obraId,
+  setObraId,
+  categoriaId,
+  setCategoriaId,
+  q,
+  setQ,
+  onClose,
+}: {
+  obras: Array<{ id: string; nombre: string; tipo: string }>;
+  categorias: Array<{ id: string; codigo: string; nombre: string }>;
+  tipo: TipoMovimiento | '';
+  setTipo: (v: TipoMovimiento | '') => void;
+  obraId: string;
+  setObraId: (v: string) => void;
+  categoriaId: string;
+  setCategoriaId: (v: string) => void;
+  q: string;
+  setQ: (v: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Filtros de movimientos</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <Combobox
+              options={[
+                { value: 'INGRESO', label: 'Ingresos' },
+                { value: 'EGRESO', label: 'Egresos' },
+              ]}
+              value={tipo}
+              onChange={(v) => setTipo(v as TipoMovimiento | '')}
+              allLabel="Todos los tipos"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Obra</Label>
+            <Combobox
+              options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
+              value={obraId}
+              onChange={setObraId}
+              allLabel="Todas las obras"
+              searchPlaceholder="Buscar obra…"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Categoría</Label>
+            <Combobox
+              options={categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo }))}
+              value={categoriaId}
+              onChange={setCategoriaId}
+              allLabel="Todas las categorías"
+              searchPlaceholder="Buscar categoría…"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Buscar en descripción</Label>
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Texto libre…" />
+          </div>
+          {(tipo || obraId || categoriaId || q) && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setTipo('');
+                setObraId('');
+                setCategoriaId('');
+                setQ('');
+              }}
+            >
+              Limpiar todos los filtros
+            </Button>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Aplicar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

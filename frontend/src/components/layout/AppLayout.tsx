@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './Sidebar';
+import { BottomNav } from './BottomNav';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,6 +27,9 @@ export function AppLayout() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
+
+        {/* Barra de navegación inferior — solo mobile */}
+        <BottomNav onMenu={() => setSidebarOpen(true)} />
       </div>
     </div>
   );
