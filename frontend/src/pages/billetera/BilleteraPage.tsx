@@ -193,7 +193,7 @@ export function BilleteraPage() {
     <div className="-m-4 sm:-m-6 lg:-m-8">
       {/* ==================== HERO ==================== */}
       <div
-        className="relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8"
+        className="sticky top-0 z-20 bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8 shadow-lg"
         style={{
           backgroundImage:
             'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
