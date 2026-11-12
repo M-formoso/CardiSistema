@@ -4,6 +4,8 @@ import {
   Wallet,
   CreditCard,
   FileBarChart2,
+  FileCheck2,
+  HardHat,
   Settings2,
   UsersRound,
   LogOut,
@@ -17,6 +19,8 @@ import { Logo } from './Logo';
 
 const NAV = [
   { to: '/', label: 'Billetera', icon: Wallet, end: true },
+  { to: '/empleados', label: 'Empleados', icon: HardHat },
+  { to: '/certificaciones', label: 'Certificaciones', icon: FileCheck2 },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart2 },
 ];

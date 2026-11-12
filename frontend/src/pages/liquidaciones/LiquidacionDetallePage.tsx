@@ -109,7 +109,7 @@ export function LiquidacionDetallePage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {liq.obra.nombre} · Semana {formatearFecha(liq.semanaInicio)} →{' '}
+            {(liq.obra?.nombre ?? 'Sin obra')} · Semana {formatearFecha(liq.semanaInicio)} →{' '}
             {formatearFecha(liq.semanaFin)}
           </h1>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -230,7 +230,7 @@ export function LiquidacionDetallePage() {
       {(editItem || agregandoNuevo) && (
         <ReciboFormDialog
           liquidacionId={liq.id}
-          obraPorDefecto={{ id: liq.obra.id, nombre: liq.obra.nombre }}
+          obraPorDefecto={{ id: liq.obraId, nombre: liq.obra?.nombre ?? 'Sin obra' }}
           item={editItem ?? undefined}
           onClose={() => {
             setEditItem(null);

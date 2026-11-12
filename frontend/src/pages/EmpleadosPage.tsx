@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Plus, TrendingUp, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, Trash2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,13 +25,13 @@ import {
 import { empresasService } from '@/services/empresasService';
 import { categoriasEmpleadosService } from '@/services/categoriasEmpleadosService';
 import { obrasService } from '@/services/obrasService';
-import { formatearFecha, formatearMonto } from '@/lib/formatters';
+import { formatearMonto } from '@/lib/formatters';
 
 export function EmpleadosPage() {
   const qc = useQueryClient();
+  const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [editando, setEditando] = useState<Empleado | null>(null);
-  const [verFicha, setVerFicha] = useState<string | null>(null);
 
   // Filtros
   const [q, setQ] = useState('');
@@ -80,14 +81,14 @@ export function EmpleadosPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="text-xl font-semibold">Empleados</h2>
+          <h1 className="text-2xl font-bold tracking-tight">Empleados</h1>
           <p className="text-sm text-muted">
-            Nómina única: empleados y contratistas (el mismo puede ser ambos).
+            Nómina única: empleados y contratistas (una misma persona puede ser ambos).
           </p>
         </div>
         <Button onClick={() => { setEditando(null); setOpen(true); }}>
           <Plus className="h-4 w-4 mr-1" />
-          Nuevo
+          Nuevo empleado
         </Button>
       </div>
 
@@ -157,74 +158,57 @@ export function EmpleadosPage() {
             {list.map((emp) => {
               const obraActual = obras.find((o) => o.id === emp.legajo?.obraActualId);
               return (
-                <>
-                  <TableRow key={emp.id}>
-                    <TableCell className="font-medium">
-                      <button
-                        className="hover:underline text-left"
-                        onClick={() => setVerFicha(verFicha === emp.id ? null : emp.id)}
+                <TableRow key={emp.id} className="cursor-pointer hover:bg-muted/5" onClick={() => nav(`/empleados/${emp.id}`)}>
+                  <TableCell className="font-medium">
+                    <div className="hover:underline">{emp.nombre}</div>
+                    <div className="text-xs text-muted font-mono">
+                      {emp.legajo?.dni ?? emp.cuitCuil ?? '—'}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {emp.legajo?.categoria?.nombre ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {emp.legajo?.empresa?.nombre ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm">{obraActual?.nombre ?? '—'}</TableCell>
+                  <TableCell className="num text-right">
+                    {emp.legajo?.jornal ? formatearMonto(emp.legajo.jornal, 'ARS') : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={emp.legajo?.situacionFiscal === 'BLANCO' ? 'success' : 'muted'}>
+                      {emp.legajo?.situacionFiscal === 'BLANCO' ? 'En blanco' : 'En negro'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => nav(`/empleados/${emp.id}`)}
                       >
-                        {emp.nombre}
-                      </button>
-                      <div className="text-xs text-muted font-mono">
-                        {emp.legajo?.dni ?? emp.cuitCuil ?? '—'}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {emp.legajo?.categoria?.nombre ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {emp.legajo?.empresa?.nombre ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">{obraActual?.nombre ?? '—'}</TableCell>
-                    <TableCell className="num text-right">
-                      {emp.legajo?.jornal ? formatearMonto(emp.legajo.jornal, 'ARS') : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={emp.legajo?.situacionFiscal === 'BLANCO' ? 'success' : 'muted'}>
-                        {emp.legajo?.situacionFiscal === 'BLANCO' ? 'En blanco' : 'En negro'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setVerFicha(verFicha === emp.id ? null : emp.id)}
-                        >
-                          {verFicha === emp.id ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { setEditando(emp); setOpen(true); }}
-                        >
-                          Editar
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm(`¿Desactivar a ${emp.nombre}?`)) desactivarMut.mutate(emp.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                  {verFicha === emp.id && (
-                    <TableRow key={`${emp.id}-ficha`} className="bg-muted/5">
-                      <TableCell colSpan={7} className="p-0">
-                        <FichaEmpleado empleadoId={emp.id} />
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
+                        Abrir
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setEditando(emp); setOpen(true); }}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm(`¿Desactivar a ${emp.nombre}?`)) desactivarMut.mutate(emp.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               );
             })}
           </TableBody>
@@ -242,117 +226,6 @@ export function EmpleadosPage() {
             qc.invalidateQueries({ queryKey: ['empleados'] });
             setOpen(false);
           }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ========== Ficha expandible ==========
-
-function FichaEmpleado({ empleadoId }: { empleadoId: string }) {
-  const { data: liquidaciones = [], isLoading: cargLiq } = useQuery({
-    queryKey: ['empleado-liquidaciones', empleadoId],
-    queryFn: () => empleadosService.liquidacionesDe(empleadoId),
-  });
-  const { data: prestamos = [], isLoading: cargPr } = useQuery({
-    queryKey: ['empleado-prestamos', empleadoId],
-    queryFn: () => empleadosService.prestamosDe(empleadoId),
-  });
-  const { data: jornales = [], isLoading: cargJor } = useQuery({
-    queryKey: ['empleado-jornales', empleadoId],
-    queryFn: () => empleadosService.historialJornales(empleadoId),
-  });
-
-  const [actualizarJornalOpen, setActualizarJornalOpen] = useState(false);
-
-  return (
-    <div className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Historial de jornales */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Historial de jornales</h3>
-            <Button size="sm" variant="outline" onClick={() => setActualizarJornalOpen(true)}>
-              <TrendingUp className="h-3 w-3 mr-1" />
-              Actualizar
-            </Button>
-          </div>
-          {cargJor && <div className="text-xs text-muted">Cargando…</div>}
-          {!cargJor && jornales.length === 0 && (
-            <div className="text-xs text-muted">Sin movimientos.</div>
-          )}
-          <ul className="text-xs space-y-1">
-            {jornales.map((h) => (
-              <li key={h.id} className="flex items-center justify-between gap-2">
-                <span className="text-muted">{formatearFecha(h.vigenteDesde)}</span>
-                <span className="num font-medium">{formatearMonto(h.jornal, 'ARS')}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Préstamos vigentes */}
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Préstamos</h3>
-          {cargPr && <div className="text-xs text-muted">Cargando…</div>}
-          {!cargPr && prestamos.length === 0 && (
-            <div className="text-xs text-muted">Sin préstamos registrados.</div>
-          )}
-          <ul className="text-xs space-y-1">
-            {prestamos.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2">
-                <span className="text-muted">{formatearFecha(p.fecha)}</span>
-                <span className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      p.estado === 'VIGENTE' ? 'warning' : p.estado === 'SALDADO' ? 'success' : 'muted'
-                    }
-                    className="text-xs"
-                  >
-                    {p.estado}
-                  </Badge>
-                  <span className="num">
-                    {formatearMonto(p.saldoPendiente, 'ARS')} / {formatearMonto(p.monto, 'ARS')}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Liquidaciones recientes */}
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Últimas liquidaciones</h3>
-          {cargLiq && <div className="text-xs text-muted">Cargando…</div>}
-          {!cargLiq && liquidaciones.length === 0 && (
-            <div className="text-xs text-muted">Sin liquidaciones.</div>
-          )}
-          <ul className="text-xs space-y-1">
-            {liquidaciones.slice(0, 8).map((li) => (
-              <li key={li.id} className="flex items-center justify-between gap-2">
-                <span className="text-muted">
-                  {formatearFecha(li.liquidacion.semanaInicio)} · {li.liquidacion.obra.nombre}
-                </span>
-                <span className="flex items-center gap-2">
-                  {li.pagado ? (
-                    <Badge variant="success" className="text-xs">Pagado</Badge>
-                  ) : (
-                    <Badge variant="warning" className="text-xs">Pend.</Badge>
-                  )}
-                  <span className="num font-medium">{formatearMonto(li.aPagar, 'ARS')}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {actualizarJornalOpen && (
-        <ActualizarJornalEmpleadoDialog
-          empleadoId={empleadoId}
-          jornalActual={jornales[0]?.jornal ?? null}
-          onClose={() => setActualizarJornalOpen(false)}
         />
       )}
     </div>
@@ -558,92 +431,3 @@ function EmpleadoDialog({
   );
 }
 
-// ========== Dialog actualizar jornal de UN empleado (desde su ficha) ==========
-
-function ActualizarJornalEmpleadoDialog({
-  empleadoId,
-  jornalActual,
-  onClose,
-}: {
-  empleadoId: string;
-  jornalActual: string | null;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const [jornal, setJornal] = useState(jornalActual ?? '');
-  const [horaExtra, setHoraExtra] = useState('');
-  const [motivo, setMotivo] = useState('');
-
-  const m = useMutation({
-    mutationFn: () =>
-      empleadosService.actualizarJornal(empleadoId, {
-        jornal: Number(jornal),
-        valorHoraExtra: horaExtra ? Number(horaExtra) : undefined,
-        motivo: motivo.trim() || undefined,
-      }),
-    onSuccess: () => {
-      toast.success('Jornal actualizado');
-      qc.invalidateQueries({ queryKey: ['empleados'] });
-      qc.invalidateQueries({ queryKey: ['empleado-jornales', empleadoId] });
-      onClose();
-    },
-    onError: (e) =>
-      toast.error(
-        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
-          'No se pudo actualizar',
-      ),
-  });
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Actualizar jornal del empleado</DialogTitle>
-          <DialogDescription>
-            Queda en el historial. Para actualizar a todo un grupo, usá Categorías.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!jornal || Number(jornal) <= 0) return toast.error('Jornal inválido');
-            m.mutate();
-          }}
-          className="space-y-4"
-        >
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Nuevo jornal *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={jornal}
-                onChange={(e) => setJornal(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Hora extra (opcional)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={horaExtra}
-                onChange={(e) => setHoraExtra(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Motivo</Label>
-            <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={m.isPending}>
-              {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Actualizar'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
