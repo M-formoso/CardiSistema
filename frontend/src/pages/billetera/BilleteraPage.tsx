@@ -39,6 +39,7 @@ import { CambioMonedaDialog } from '@/pages/movimientos/CambioMonedaDialog';
 import { CarteraChequesDialog } from './CarteraChequesDialog';
 import { NuevoChequeDialog } from './NuevoChequeDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
+import { Pagination } from '@/components/ui/pagination';
 
 type MonedaFiltro = 'TODAS' | 'ARS' | 'USD';
 
@@ -60,6 +61,8 @@ export function BilleteraPage() {
   const [obraId, setObraId] = useState<string>('');
   const [categoriaId, setCategoriaId] = useState<string>('');
   const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   // ---------- Dialogs ----------
   const [openEgreso, setOpenEgreso] = useState(false);
@@ -87,7 +90,10 @@ export function BilleteraPage() {
     queryFn: () => categoriasService.list(true),
   });
   const { data: listado, isLoading: loadingMovs } = useQuery({
-    queryKey: ['movimientos', { cajaId, tipo, obraId, categoriaId, desde, hasta, q }],
+    queryKey: [
+      'movimientos',
+      { cajaId, tipo, obraId, categoriaId, desde, hasta, q, page, pageSize },
+    ],
     queryFn: () =>
       movimientosService.list({
         cajaId: cajaId || undefined,
@@ -97,9 +103,15 @@ export function BilleteraPage() {
         desde,
         hasta,
         q: q || undefined,
-        pageSize: 100,
+        page,
+        pageSize,
       }),
   });
+
+  // Reset a página 1 al cambiar cualquier filtro
+  useEffect(() => {
+    setPage(1);
+  }, [cajaId, tipo, obraId, categoriaId, desde, hasta, q, pageSize]);
 
   // ---------- Totales ----------
   const totales = useMemo(() => {
@@ -291,7 +303,7 @@ export function BilleteraPage() {
           />
           <BigStatCard
             titulo={`Movimientos · ${rangoLabel(desde, hasta)}`}
-            subtitulo={`${listado?.total ?? 0} registros${listado && listado.total > 100 ? ' (mostrando 100)' : ''}`}
+            subtitulo={`${listado?.total ?? 0} registros`}
             items={[
               {
                 label: 'Ingresos',
@@ -456,6 +468,16 @@ export function BilleteraPage() {
                 ))}
               </TableBody>
             </Table>
+            {listado && (
+              <Pagination
+                total={listado.total}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                className="border-t border-border"
+              />
+            )}
           </div>
           <div className="text-xs text-muted mt-2 flex items-center justify-between">
             <span>

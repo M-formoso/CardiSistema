@@ -15,16 +15,20 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { empresasService, type Empresa } from '@/services/empresasService';
+import { usePagination } from '@/lib/usePagination';
+import { Pagination } from '@/components/ui/pagination';
 
 export function EmpresasPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editando, setEditando] = useState<Empresa | null>(null);
 
-  const { data: list = [], isLoading } = useQuery({
+  const { data: listRaw = [], isLoading } = useQuery({
     queryKey: ['empresas'],
     queryFn: () => empresasService.list(),
   });
+  const { paginados: list, total, page, pageSize, setPage, setPageSize } =
+    usePagination(listRaw, 25);
 
   const desactivarMut = useMutation({
     mutationFn: (id: string) => empresasService.desactivar(id),
@@ -50,6 +54,14 @@ export function EmpresasPage() {
       </div>
 
       <div className="rounded-lg border border-border bg-card">
+        <Pagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          className="border-b border-border"
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -112,6 +124,16 @@ export function EmpresasPage() {
             ))}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            className="border-t border-border"
+          />
+        )}
       </div>
 
       {open && (

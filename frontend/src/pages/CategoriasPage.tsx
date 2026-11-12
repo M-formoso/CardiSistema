@@ -15,14 +15,18 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { categoriasService } from '@/services/categoriasService';
+import { usePagination } from '@/lib/usePagination';
+import { Pagination } from '@/components/ui/pagination';
 
 export function CategoriasPage() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
-  const { data: cats = [], isLoading } = useQuery({
+  const { data: catsRaw = [], isLoading } = useQuery({
     queryKey: ['categorias'],
     queryFn: () => categoriasService.list(),
   });
+  const { paginados: cats, total, page, pageSize, setPage, setPageSize } =
+    usePagination(catsRaw, 25);
 
   return (
     <div className="space-y-4">
@@ -38,6 +42,14 @@ export function CategoriasPage() {
       </div>
 
       <div className="rounded-lg border border-border bg-card">
+        <Pagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          className="border-b border-border"
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -71,6 +83,16 @@ export function CategoriasPage() {
               ))}
           </TableBody>
         </Table>
+        {total > pageSize && (
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            className="border-t border-border"
+          />
+        )}
       </div>
 
       <NuevaCategoriaDialog
