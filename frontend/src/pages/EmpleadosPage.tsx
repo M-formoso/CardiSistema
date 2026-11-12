@@ -29,6 +29,7 @@ import { formatearMonto } from '@/lib/formatters';
 import { usePagination } from '@/lib/usePagination';
 import { Pagination } from '@/components/ui/pagination';
 import { GestionCategoriasDialog } from '@/pages/empleados/GestionCategoriasDialog';
+import { GestionEmpresasDialog } from '@/pages/empleados/GestionEmpresasDialog';
 
 export function EmpleadosPage() {
   const qc = useQueryClient();
@@ -285,6 +286,7 @@ function EmpleadoDialog({
 }) {
   const qc = useQueryClient();
   const [gestionCategoriasOpen, setGestionCategoriasOpen] = useState(false);
+  const [gestionEmpresasOpen, setGestionEmpresasOpen] = useState(false);
   const [nombre, setNombre] = useState(empleado?.nombre ?? '');
   const [dni, setDni] = useState(empleado?.legajo?.dni ?? '');
   const [cuitCuil, setCuitCuil] = useState(empleado?.cuitCuil ?? '');
@@ -371,7 +373,16 @@ function EmpleadoDialog({
               <Input value={cuitCuil} onChange={(e) => setCuitCuil(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Empresa</Label>
+              <div className="flex items-center justify-between">
+                <Label>Empresa</Label>
+                <button
+                  type="button"
+                  onClick={() => setGestionEmpresasOpen(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva / gestionar
+                </button>
+              </div>
               <Select value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
                 <option value="">— sin asignar —</option>
                 {empresas.map((em) => (
@@ -513,6 +524,15 @@ function EmpleadoDialog({
             setCategoriaId(nueva.id);
             if (!empleado && nueva.jornal && !jornal) setJornal(nueva.jornal);
             qc.invalidateQueries({ queryKey: ['categorias-empleados', { activo: true }] });
+          }}
+        />
+      )}
+      {gestionEmpresasOpen && (
+        <GestionEmpresasDialog
+          onClose={() => setGestionEmpresasOpen(false)}
+          onEmpresaCreada={(nueva) => {
+            setEmpresaId(nueva.id);
+            qc.invalidateQueries({ queryKey: ['empresas', { activo: true }] });
           }}
         />
       )}
