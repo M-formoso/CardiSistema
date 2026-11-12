@@ -190,10 +190,10 @@ export function BilleteraPage() {
   }, []);
 
   return (
-    <div className="-m-4 sm:-m-6 lg:-m-8">
+    <div className="-m-4 sm:-m-6 lg:-m-8 h-full flex flex-col">
       {/* ==================== HERO ==================== */}
       <div
-        className="sticky top-0 z-20 bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8 shadow-lg"
+        className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8 shadow-lg"
         style={{
           backgroundImage:
             'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
@@ -331,11 +331,11 @@ export function BilleteraPage() {
         </div>
       </div>
 
-      {/* ==================== BODY ==================== */}
-      <div className="px-4 sm:px-8 lg:px-12 py-6 space-y-6">
-        {/* Movimientos */}
-        <div>
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-2 gap-3">
+      {/* ==================== BODY (scrollea solo) ==================== */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Filtros de movimientos — sticky top-0 dentro del body */}
+        <div className="sticky top-0 z-20 bg-background border-b border-border px-4 sm:px-8 lg:px-12 py-3">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Movimientos
             </h2>
@@ -403,9 +403,13 @@ export function BilleteraPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Tabla de movimientos — ocupa todo el ancho, thead sticky debajo de los filtros */}
+        <div className="px-4 sm:px-8 lg:px-12 py-4">
           <div className="rounded-lg border border-border bg-card">
             <Table>
-              <TableHeader>
+              <TableHeader className="[&_th]:sticky [&_th]:top-[68px] [&_th]:bg-card [&_th]:z-10">
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Tipo</TableHead>
