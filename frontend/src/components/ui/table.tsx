@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils';
 
 export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    // overflow-x-auto permite scroll horizontal cuando hay muchas columnas sin
-    // crear un contexto de scroll vertical propio — así un thead sticky dentro
-    // de la tabla se pega al scroll del padre (ej. Billetera).
-    <div className="relative w-full overflow-x-auto">
+    // Sin overflow en el wrapper para no crear un contexto de scroll que
+    // rompa sticky en `<th>` o `<thead>`. Si una tabla necesita scroll
+    // horizontal, el padre debe envolverla en un div con overflow propio.
+    <div className="relative w-full">
       <table
         ref={ref}
         className={cn('w-full caption-bottom text-sm', className)}
