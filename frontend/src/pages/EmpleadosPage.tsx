@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, ExternalLink, Download } from 'lucide-react';
+import { Loader2, Plus, Trash2, ExternalLink, Download, Tags } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,12 +28,14 @@ import { obrasService } from '@/services/obrasService';
 import { formatearMonto } from '@/lib/formatters';
 import { usePagination } from '@/lib/usePagination';
 import { Pagination } from '@/components/ui/pagination';
+import { GestionCategoriasDialog } from '@/pages/empleados/GestionCategoriasDialog';
 
 export function EmpleadosPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [editando, setEditando] = useState<Empleado | null>(null);
+  const [gestionCategorias, setGestionCategorias] = useState(false);
 
   // Filtros
   const [q, setQ] = useState('');
@@ -110,7 +112,11 @@ export function EmpleadosPage() {
             Nómina única: empleados y contratistas (una misma persona puede ser ambos).
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setGestionCategorias(true)}>
+            <Tags className="h-4 w-4 mr-1" />
+            Categorías
+          </Button>
           <Button
             variant="outline"
             onClick={() => {
@@ -287,6 +293,10 @@ export function EmpleadosPage() {
           }}
         />
       )}
+
+      {gestionCategorias && (
+        <GestionCategoriasDialog onClose={() => setGestionCategorias(false)} />
+      )}
     </div>
   );
 }
@@ -308,6 +318,8 @@ function EmpleadoDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
+  const [gestionCategoriasOpen, setGestionCategoriasOpen] = useState(false);
   const [nombre, setNombre] = useState(empleado?.nombre ?? '');
   const [dni, setDni] = useState(empleado?.legajo?.dni ?? '');
   const [cuitCuil, setCuitCuil] = useState(empleado?.cuitCuil ?? '');
@@ -403,15 +415,57 @@ function EmpleadoDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Categoría</Label>
+              <div className="flex items-center justify-between">
+                <Label>Categoría</Label>
+                <button
+                  type="button"
+                  onClick={() => setGestionCategoriasOpen(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva / gestionar
+                </button>
+              </div>
               <Select
                 value={categoriaId}
                 onChange={(e) => {
-                  setCategoriaId(e.target.value);
-                  // En alta: autocargar jornal desde la categoría si no hay valor propio
+                  const nuevaCatId = e.target.value;
+                  setCategoriaId(nuevaCatId);
+                  const c = categorias.find((x) => x.id === nuevaCatId);
+                  // En alta: autocargar jornal si no hay valor propio
                   if (!empleado) {
-                    const c = categorias.find((x) => x.id === e.target.value);
                     if (c?.jornal && !jornal) setJornal(c.jornal);
+                    return;
+                  }
+                  // En edit: si el jornal del empleado difiere del de la categoría,
+                  // ofrecer actualizarlo automáticamente (crea entrada en historial).
+                  if (c?.jornal && Number(c.jornal) !== Number(empleado.legajo?.jornal ?? 0)) {
+                    const ok = confirm(
+                      `Esta categoría tiene jornal de $${c.jornal}. ¿Actualizar el jornal del empleado a ese valor? (Queda en el historial.)`,
+                    );
+                    if (ok) {
+                      empleadosService
+                        .actualizarJornal(empleado.id, {
+                          jornal: Number(c.jornal),
+                          valorHoraExtra: c.jornal
+                            ? Math.round((Number(c.jornal) / 8) * 1.5)
+                            : undefined,
+                          motivo: `Cambio de categoría a "${c.nombre}"`,
+                        })
+                        .then(() => {
+                          toast.success(`Jornal del empleado actualizado a ${formatearMonto(c.jornal!, 'ARS')}`);
+                          qc.invalidateQueries({ queryKey: ['empleados'] });
+                          qc.invalidateQueries({ queryKey: ['empleado', empleado.id] });
+                          qc.invalidateQueries({
+                            queryKey: ['empleado-jornales', empleado.id],
+                          });
+                        })
+                        .catch((err) =>
+                          toast.error(
+                            (err as { response?: { data?: { message?: string } } }).response
+                              ?.data?.message ?? 'No se pudo actualizar el jornal',
+                          ),
+                        );
+                    }
                   }
                 }}
               >
@@ -486,6 +540,17 @@ function EmpleadoDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+      {gestionCategoriasOpen && (
+        <GestionCategoriasDialog
+          onClose={() => setGestionCategoriasOpen(false)}
+          onCategoriaCreada={(nueva) => {
+            // Autoseleccionar la categoría recién creada
+            setCategoriaId(nueva.id);
+            if (!empleado && nueva.jornal && !jornal) setJornal(nueva.jornal);
+            qc.invalidateQueries({ queryKey: ['categorias-empleados', { activo: true }] });
+          }}
+        />
+      )}
     </Dialog>
   );
 }

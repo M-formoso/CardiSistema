@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { movimientosService, type MedioPago } from '@/services/movimientosServic
 import { cajasService } from '@/services/cajasService';
 import { obrasService } from '@/services/obrasService';
 import { beneficiariosService } from '@/services/beneficiariosService';
-import { categoriasService } from '@/services/categoriasService';
+import { categoriasService, type Categoria } from '@/services/categoriasService';
 import { formatearMonto } from '@/lib/formatters';
 
 type Linea = { obraId: string; monto: string };
@@ -38,6 +38,8 @@ export function NuevoEgresoDialog({
   onOpenChange: (v: boolean) => void;
   onCreated: () => void;
 }) {
+  const qc = useQueryClient();
+  const [nuevaCatOpen, setNuevaCatOpen] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [cajaId, setCajaId] = useState('');
   const [monto, setMonto] = useState('');
@@ -225,12 +227,20 @@ export function NuevoEgresoDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Categoría</Label>
+            <div className="flex items-center justify-between">
+              <Label>Categoría</Label>
+              <button
+                type="button"
+                onClick={() => setNuevaCatOpen(true)}
+                className="text-xs text-primary hover:underline"
+              >
+                + Nueva categoría
+              </button>
+            </div>
             <Select
               value={categoriaId}
               onChange={(e) => {
                 setCategoriaId(e.target.value);
-                // Si cambió a préstamo y el beneficiario actual no es empleado, lo limpiamos
                 const nueva = categorias.find((c) => c.id === e.target.value);
                 if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
                   setBeneficiarioId('');
@@ -346,6 +356,92 @@ export function NuevoEgresoDialog({
             </Button>
             <Button type="submit" disabled={!puedeEnviar || m.isPending}>
               {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Registrar egreso'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+      {nuevaCatOpen && (
+        <NuevaCategoriaGastoDialog
+          onClose={() => setNuevaCatOpen(false)}
+          onCreada={(cat) => {
+            setCategoriaId(cat.id);
+            qc.invalidateQueries({ queryKey: ['categorias', 'activas'] });
+            setNuevaCatOpen(false);
+          }}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function NuevaCategoriaGastoDialog({
+  onClose,
+  onCreada,
+}: {
+  onClose: () => void;
+  onCreada: (cat: Categoria) => void;
+}) {
+  const [codigo, setCodigo] = useState('');
+  const [nombre, setNombre] = useState('');
+
+  const m = useMutation({
+    mutationFn: () =>
+      categoriasService.create({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim() }),
+    onSuccess: (cat) => {
+      toast.success('Categoría creada');
+      onCreada(cat);
+    },
+    onError: (e) =>
+      toast.error(
+        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          'No se pudo crear',
+      ),
+  });
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nueva categoría de gasto</DialogTitle>
+          <DialogDescription>
+            Al crear, queda seleccionada en el egreso automáticamente.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!codigo.trim() || !nombre.trim())
+              return toast.error('Código y nombre son obligatorios');
+            m.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Código *</Label>
+              <Input
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                placeholder="FLETE, COMB, IMP…"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Fletes, Combustible…"
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={m.isPending}>
+              {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Crear'}
             </Button>
           </DialogFooter>
         </form>
