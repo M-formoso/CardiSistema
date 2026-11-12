@@ -70,12 +70,24 @@ export function NuevoEgresoDialog({
   const sumaLineas = lineas.reduce((acc, l) => acc + (Number(l.monto) || 0), 0);
   const diferencia = totalNum - sumaLineas;
 
+  const categoriaSel = categorias.find((c) => c.id === categoriaId);
+  const esPrestamoEmpleado = categoriaSel?.codigo === 'PREST_EMP';
+  const beneficiarioSel = benes.find((b) => b.id === beneficiarioId);
+  const prestamoRequiereEmpleado =
+    esPrestamoEmpleado && (!beneficiarioSel || beneficiarioSel.tipo !== 'EMPLEADO');
+
+  // Opciones de beneficiario: si es préstamo, solo empleados; si no, todos
+  const benesFiltrados = esPrestamoEmpleado
+    ? benes.filter((b) => b.tipo === 'EMPLEADO')
+    : benes;
+
   const puedeEnviar = useMemo(() => {
     if (!cajaId || totalNum <= 0) return false;
+    if (prestamoRequiereEmpleado) return false;
     if (lineas.length === 1) return !!lineas[0].obraId;
     if (lineas.some((l) => !l.obraId || !l.monto)) return false;
     return Math.abs(diferencia) < 0.01;
-  }, [cajaId, totalNum, lineas, diferencia]);
+  }, [cajaId, totalNum, lineas, diferencia, prestamoRequiereEmpleado]);
 
   const m = useMutation({
     mutationFn: () =>
@@ -198,10 +210,12 @@ export function NuevoEgresoDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Beneficiario</Label>
+              <Label>
+                Beneficiario {esPrestamoEmpleado && <span className="text-warning">(solo empleados)</span>}
+              </Label>
               <Select value={beneficiarioId} onChange={(e) => setBeneficiarioId(e.target.value)}>
                 <option value="">Sin beneficiario</option>
-                {benes.map((b) => (
+                {benesFiltrados.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.nombre} · {b.tipo}
                   </option>
@@ -212,7 +226,17 @@ export function NuevoEgresoDialog({
 
           <div className="space-y-2">
             <Label>Categoría</Label>
-            <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+            <Select
+              value={categoriaId}
+              onChange={(e) => {
+                setCategoriaId(e.target.value);
+                // Si cambió a préstamo y el beneficiario actual no es empleado, lo limpiamos
+                const nueva = categorias.find((c) => c.id === e.target.value);
+                if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
+                  setBeneficiarioId('');
+                }
+              }}
+            >
               <option value="">Sin categoría</option>
               {categorias.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -220,6 +244,17 @@ export function NuevoEgresoDialog({
                 </option>
               ))}
             </Select>
+            {esPrestamoEmpleado && (
+              <p className="text-xs text-warning">
+                Se va a crear un préstamo al empleado con saldo = monto. Se descontará en
+                liquidaciones futuras. Imputar a "Gastos generales" o "Varios".
+              </p>
+            )}
+            {prestamoRequiereEmpleado && (
+              <p className="text-xs text-danger">
+                Elegí un empleado (categoría "Préstamos a empleados" requiere beneficiario tipo EMPLEADO).
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
