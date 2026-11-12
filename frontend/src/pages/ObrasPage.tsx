@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,9 +28,23 @@ const estadoVariante: Record<Obra['estado'], 'default' | 'success' | 'warning' |
   TERMINADA: 'muted',
 };
 
+const estadoLabel: Record<Obra['estado'], string> = {
+  ACTIVA: 'Activa',
+  EN_LICITACION: 'En licitación',
+  PAUSADA: 'Pausada',
+  TERMINADA: 'Terminada',
+};
+
+const tipoLabel: Record<Obra['tipo'], string> = {
+  OBRA: 'Obra',
+  UNIDAD_NEGOCIO: 'Unidad de negocio',
+  GENERAL: 'General',
+};
+
 export function ObrasPage() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [editando, setEditando] = useState<Obra | null>(null);
   const qc = useQueryClient();
   const { data: obrasRaw = [], isLoading } = useQuery({
     queryKey: ['obras', { q }],
@@ -39,6 +53,19 @@ export function ObrasPage() {
   const { paginados: obras, total, page, pageSize, setPage, setPageSize } =
     usePagination(obrasRaw, 25);
 
+  const desactivarMut = useMutation({
+    mutationFn: (id: string) => obrasService.desactivar(id),
+    onSuccess: () => {
+      toast.success('Obra desactivada');
+      qc.invalidateQueries({ queryKey: ['obras'] });
+    },
+    onError: (e) =>
+      toast.error(
+        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          'No se pudo desactivar',
+      ),
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -46,7 +73,12 @@ export function ObrasPage() {
           <h1 className="text-2xl font-bold tracking-tight">Obras</h1>
           <p className="text-sm text-muted">Obras y unidades de negocio.</p>
         </div>
-        <Button onClick={() => setOpen(true)}>
+        <Button
+          onClick={() => {
+            setEditando(null);
+            setOpen(true);
+          }}
+        >
           <Plus className="h-4 w-4 mr-1" />
           Nueva obra
         </Button>
@@ -74,14 +106,16 @@ export function ObrasPage() {
               <TableHead>Nombre</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Contratado</TableHead>
+              <TableHead className="text-right">Contratado</TableHead>
               <TableHead>Comitente</TableHead>
+              <TableHead>Ubicación</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted py-8">
+                <TableCell colSpan={7} className="text-center text-muted py-8">
                   <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                   Cargando…
                 </TableCell>
@@ -89,26 +123,64 @@ export function ObrasPage() {
             )}
             {!isLoading && obras.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted py-8">
+                <TableCell colSpan={7} className="text-center text-muted py-8">
                   Sin obras.
                 </TableCell>
               </TableRow>
             )}
             {obras.map((o) => (
               <TableRow key={o.id}>
-                <TableCell className="font-medium">{o.nombre}</TableCell>
-                <TableCell>
-                  <Badge variant="muted">{o.tipo}</Badge>
+                <TableCell className="font-medium">
+                  {o.nombre}
+                  {!o.activo && (
+                    <Badge variant="muted" className="ml-2 text-xs">
+                      Inactiva
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={estadoVariante[o.estado]}>{o.estado}</Badge>
+                  <Badge variant="muted">{tipoLabel[o.tipo]}</Badge>
                 </TableCell>
-                <TableCell className="num">
+                <TableCell>
+                  <Badge variant={estadoVariante[o.estado]}>{estadoLabel[o.estado]}</Badge>
+                </TableCell>
+                <TableCell className="num text-right">
                   {o.montoContratado && o.monedaContrato
                     ? formatearMonto(o.montoContratado, o.monedaContrato)
                     : '—'}
                 </TableCell>
                 <TableCell className="text-muted">{o.comitente ?? '—'}</TableCell>
+                <TableCell className="text-muted">{o.ubicacion ?? '—'}</TableCell>
+                <TableCell>
+                  <div className="flex gap-1 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditando(o);
+                        setOpen(true);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                    {o.activo && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `¿Desactivar "${o.nombre}"? Queda oculta en los selectores pero no se pierde el historial.`,
+                            )
+                          )
+                            desactivarMut.mutate(o.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -125,38 +197,42 @@ export function ObrasPage() {
         )}
       </div>
 
-      <NuevaObraDialog
-        open={open}
-        onOpenChange={setOpen}
-        onCreated={() => {
-          qc.invalidateQueries({ queryKey: ['obras'] });
-          setOpen(false);
-        }}
-      />
+      {open && (
+        <ObraDialog
+          obra={editando ?? undefined}
+          onClose={() => setOpen(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['obras'] });
+            setOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function NuevaObraDialog({
-  open,
-  onOpenChange,
-  onCreated,
+function ObraDialog({
+  obra,
+  onClose,
+  onSaved,
 }: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onCreated: () => void;
+  obra?: Obra;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
-  const [nombre, setNombre] = useState('');
-  const [tipo, setTipo] = useState<Obra['tipo']>('OBRA');
-  const [estado, setEstado] = useState<Obra['estado']>('ACTIVA');
-  const [comitente, setComitente] = useState('');
-  const [ubicacion, setUbicacion] = useState('');
-  const [montoContratado, setMontoContratado] = useState('');
-  const [monedaContrato, setMonedaContrato] = useState<'ARS' | 'USD'>('ARS');
+  const [nombre, setNombre] = useState(obra?.nombre ?? '');
+  const [tipo, setTipo] = useState<Obra['tipo']>(obra?.tipo ?? 'OBRA');
+  const [estado, setEstado] = useState<Obra['estado']>(obra?.estado ?? 'ACTIVA');
+  const [comitente, setComitente] = useState(obra?.comitente ?? '');
+  const [ubicacion, setUbicacion] = useState(obra?.ubicacion ?? '');
+  const [montoContratado, setMontoContratado] = useState(obra?.montoContratado ?? '');
+  const [monedaContrato, setMonedaContrato] = useState<'ARS' | 'USD'>(
+    (obra?.monedaContrato as 'ARS' | 'USD') ?? 'ARS',
+  );
 
   const m = useMutation({
-    mutationFn: () =>
-      obrasService.create({
+    mutationFn: () => {
+      const payload = {
         nombre: nombre.trim(),
         tipo,
         estado,
@@ -164,29 +240,31 @@ function NuevaObraDialog({
         ubicacion: ubicacion.trim() || undefined,
         montoContratado: montoContratado ? Number(montoContratado) : undefined,
         monedaContrato: montoContratado ? monedaContrato : undefined,
-      }),
+      };
+      return obra ? obrasService.update(obra.id, payload) : obrasService.create(payload);
+    },
     onSuccess: () => {
-      toast.success('Obra creada');
-      setNombre('');
-      setComitente('');
-      setUbicacion('');
-      setMontoContratado('');
-      onCreated();
+      toast.success(obra ? 'Obra actualizada' : 'Obra creada');
+      onSaved();
     },
     onError: (err) => {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'No se pudo crear la obra';
+        'No se pudo guardar la obra';
       toast.error(msg);
     },
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nueva obra</DialogTitle>
-          <DialogDescription>Cargá los datos básicos — se pueden editar después.</DialogDescription>
+          <DialogTitle>{obra ? `Editar "${obra.nombre}"` : 'Nueva obra'}</DialogTitle>
+          <DialogDescription>
+            {obra
+              ? 'Podés cambiar el nombre, estado, comitente, ubicación y monto contratado.'
+              : 'Cargá los datos básicos — se pueden editar después.'}
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -259,11 +337,17 @@ function NuevaObraDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={m.isPending}>
-              {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Crear'}
+              {m.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : obra ? (
+                'Guardar cambios'
+              ) : (
+                'Crear'
+              )}
             </Button>
           </DialogFooter>
         </form>
