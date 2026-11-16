@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   CotizacionTipo,
+  EstadoCheque,
   EstadoMovimiento,
   EstadoPrestamoEmpleado,
   FuenteCotizacion,
@@ -124,6 +125,31 @@ export class MovimientosService {
     const imputaciones = repartirMonto(dto.monto, dto.imputaciones);
     await this.validarObrasActivas(imputaciones.map((i) => i.obraId));
 
+    // Si el pago es con cheque de tercero, validar que el cheque esté en
+    // cartera, que la moneda coincida con la caja y que el monto del egreso
+    // sea EXACTO al monto del cheque (Enfoque C del SDD: 1 cheque = 1 egreso,
+    // el reparto es por obra, no por valor del cheque).
+    let cheque: Awaited<ReturnType<typeof this.prisma.cheque.findUnique>> | null = null;
+    if (dto.chequeId) {
+      cheque = await this.prisma.cheque.findUnique({ where: { id: dto.chequeId } });
+      if (!cheque) throw new BadRequestException('El cheque indicado no existe');
+      if (cheque.estado !== EstadoCheque.EN_CARTERA) {
+        throw new BadRequestException(
+          `El cheque está en estado ${cheque.estado} — solo se pueden entregar cheques EN_CARTERA`,
+        );
+      }
+      if (cheque.moneda !== caja.moneda) {
+        throw new BadRequestException(
+          `El cheque es ${cheque.moneda} pero la caja está en ${caja.moneda}`,
+        );
+      }
+      if (Number(cheque.monto) !== dto.monto) {
+        throw new BadRequestException(
+          `El egreso debe ser por el monto exacto del cheque (${cheque.monto})`,
+        );
+      }
+    }
+
     // Detectar si es un préstamo a empleado (categoría PREST_EMP)
     const esPrestamoEmpleado = await this.esEgresoDePrestamo(
       dto.categoriaId,
@@ -165,6 +191,25 @@ export class MovimientosService {
         },
         include: { imputaciones: true, caja: true },
       });
+
+      // Si usamos un cheque, pasarlo a ENTREGADO y linkearle el beneficiario
+      // del egreso si no lo tenía ya. Re-leemos dentro de la tx para evitar
+      // el race condition de dos egresos concurrentes eligiendo el mismo
+      // cheque (R7 del SDD).
+      if (dto.chequeId) {
+        const chequeActual = await tx.cheque.findUnique({ where: { id: dto.chequeId } });
+        if (!chequeActual || chequeActual.estado !== EstadoCheque.EN_CARTERA) {
+          throw new BadRequestException('El cheque ya no está disponible');
+        }
+        await tx.cheque.update({
+          where: { id: dto.chequeId },
+          data: {
+            estado: EstadoCheque.ENTREGADO,
+            beneficiarioId: chequeActual.beneficiarioId ?? dto.beneficiarioId ?? null,
+            updatedById: userId,
+          },
+        });
+      }
 
       // Si es préstamo a empleado, creo el PrestamoEmpleado dentro de la misma transacción
       if (esPrestamoEmpleado && dto.beneficiarioId) {

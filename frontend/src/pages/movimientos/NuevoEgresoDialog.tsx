@@ -20,7 +20,8 @@ import { cajasService } from '@/services/cajasService';
 import { obrasService } from '@/services/obrasService';
 import { beneficiariosService } from '@/services/beneficiariosService';
 import { categoriasService, type Categoria } from '@/services/categoriasService';
-import { formatearMonto } from '@/lib/formatters';
+import { chequesService } from '@/services/chequesService';
+import { formatearFecha, formatearMonto } from '@/lib/formatters';
 
 type Linea = { obraId: string; monto: string };
 
@@ -48,6 +49,7 @@ export function NuevoEgresoDialog({
   const [categoriaId, setCategoriaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [lineas, setLineas] = useState<Linea[]>([{ obraId: '', monto: '' }]);
+  const [chequeId, setChequeId] = useState('');
 
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
@@ -65,12 +67,23 @@ export function NuevoEgresoDialog({
     queryKey: ['categorias', 'activas'],
     queryFn: () => categoriasService.list(true),
   });
+  const { data: chequesCartera = [] } = useQuery({
+    queryKey: ['cheques', 'cartera'],
+    queryFn: () => chequesService.list({ estado: 'EN_CARTERA' }),
+  });
 
   const cajaSel = cajas.find((c) => c.id === cajaId);
   const moneda = cajaSel?.moneda ?? 'ARS';
+  const modoCheque = cajaSel?.tipo === 'CHEQUES_TERCEROS';
+  const chequesDisponibles = useMemo(
+    () => chequesCartera.filter((c) => c.moneda === moneda),
+    [chequesCartera, moneda],
+  );
+  const chequeSel = chequesDisponibles.find((c) => c.id === chequeId);
   const totalNum = Number(monto) || 0;
   const sumaLineas = lineas.reduce((acc, l) => acc + (Number(l.monto) || 0), 0);
   const diferencia = totalNum - sumaLineas;
+  const disponibleCheque = chequeSel ? Number(chequeSel.monto) - sumaLineas : 0;
 
   const categoriaSel = categorias.find((c) => c.id === categoriaId);
   const esPrestamoEmpleado = categoriaSel?.codigo === 'PREST_EMP';
@@ -86,10 +99,11 @@ export function NuevoEgresoDialog({
   const puedeEnviar = useMemo(() => {
     if (!cajaId || totalNum <= 0) return false;
     if (prestamoRequiereEmpleado) return false;
+    if (modoCheque && !chequeId) return false;
     if (lineas.length === 1) return !!lineas[0].obraId;
     if (lineas.some((l) => !l.obraId || !l.monto)) return false;
     return Math.abs(diferencia) < 0.01;
-  }, [cajaId, totalNum, lineas, diferencia, prestamoRequiereEmpleado]);
+  }, [cajaId, totalNum, lineas, diferencia, prestamoRequiereEmpleado, modoCheque, chequeId]);
 
   const m = useMutation({
     mutationFn: () =>
@@ -101,6 +115,7 @@ export function NuevoEgresoDialog({
         beneficiarioId: beneficiarioId || undefined,
         categoriaId: categoriaId || undefined,
         descripcion: descripcion.trim() || undefined,
+        chequeId: chequeId || undefined,
         imputaciones:
           lineas.length === 1
             ? [{ obraId: lineas[0].obraId, monto: totalNum }]
@@ -125,6 +140,32 @@ export function NuevoEgresoDialog({
     setCategoriaId('');
     setDescripcion('');
     setLineas([{ obraId: '', monto: '' }]);
+    setChequeId('');
+  }
+
+  // Si cambia la caja, limpiar el cheque elegido. Si la caja nueva es de
+  // cheques y el medio no coincide, setearlo. Si deja de ser caja de cheques,
+  // volver a EFECTIVO.
+  function onCajaChange(nuevoId: string) {
+    setCajaId(nuevoId);
+    setChequeId('');
+    const nuevaCaja = cajas.find((c) => c.id === nuevoId);
+    if (nuevaCaja?.tipo === 'CHEQUES_TERCEROS') {
+      setMedioPago('CHEQUE_TERCERO');
+    } else if (medioPago === 'CHEQUE_TERCERO') {
+      setMedioPago('EFECTIVO');
+    }
+  }
+
+  // Al elegir un cheque: setear monto del egreso = monto del cheque, y auto-
+  // completar beneficiario si el cheque ya tenía uno.
+  function onChequeChange(id: string) {
+    setChequeId(id);
+    const ch = chequesDisponibles.find((c) => c.id === id);
+    if (ch) {
+      setMonto(String(ch.monto));
+      if (ch.beneficiarioId && !beneficiarioId) setBeneficiarioId(ch.beneficiarioId);
+    }
   }
 
   function addLinea() {
@@ -176,7 +217,7 @@ export function NuevoEgresoDialog({
             </div>
             <div className="space-y-2">
               <Label>Caja *</Label>
-              <Select value={cajaId} onChange={(e) => setCajaId(e.target.value)} required>
+              <Select value={cajaId} onChange={(e) => onCajaChange(e.target.value)} required>
                 <option value="">Elegí…</option>
                 {cajas.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -199,6 +240,41 @@ export function NuevoEgresoDialog({
             </div>
           </div>
 
+          {modoCheque && (
+            <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-primary">
+                Cheque a entregar *
+              </Label>
+              {chequesDisponibles.length === 0 ? (
+                <p className="text-xs text-danger">
+                  No hay cheques EN_CARTERA en {moneda}. Cargá uno primero desde "Nuevo cheque".
+                </p>
+              ) : (
+                <>
+                  <Select value={chequeId} onChange={(e) => onChequeChange(e.target.value)} required>
+                    <option value="">Elegí cheque…</option>
+                    {chequesDisponibles.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        N° {c.numero} · {c.banco ?? 's/banco'} · {formatearMonto(c.monto, c.moneda)}
+                        {' · pago '}
+                        {formatearFecha(c.fechaPago)}
+                      </option>
+                    ))}
+                  </Select>
+                  {chequeSel && (
+                    <div className="text-[11px] text-muted">
+                      Librador: {chequeSel.librador ?? chequeSel.titular ?? '—'} · Monto:{' '}
+                      <span className="font-semibold text-foreground num">
+                        {formatearMonto(chequeSel.monto, chequeSel.moneda)}
+                      </span>{' '}
+                      · Vencimiento: {formatearFecha(chequeSel.fechaPago)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Monto total ({moneda}) *</Label>
@@ -209,6 +285,12 @@ export function NuevoEgresoDialog({
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}
                 required
+                readOnly={modoCheque && !!chequeId}
+                title={
+                  modoCheque && chequeId
+                    ? 'El monto es el del cheque elegido — el reparto es por obra'
+                    : undefined
+                }
               />
             </div>
             <div className="space-y-2">
@@ -346,6 +428,19 @@ export function NuevoEgresoDialog({
                     {formatearMonto(diferencia, moneda)}
                   </span>
                 )}
+              </div>
+            )}
+            {modoCheque && chequeSel && (
+              <div
+                className={`text-xs text-right font-medium ${
+                  disponibleCheque < 0
+                    ? 'text-danger'
+                    : disponibleCheque > 0
+                      ? 'text-warning'
+                      : 'text-success'
+                }`}
+              >
+                Disponible del cheque: {formatearMonto(disponibleCheque, moneda)}
               </div>
             )}
           </div>
