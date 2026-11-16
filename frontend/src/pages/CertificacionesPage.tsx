@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Plus, ExternalLink, Search, Check, X } from 'lucide-react';
+import { Loader2, Plus, ExternalLink, Search, Check, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -223,6 +223,10 @@ export function CertificacionesPage() {
    - Al crear: liquidación aprobada con recibos listos para pagar / imprimir
    ================================================================ */
 
+/** Línea de pago "por tanto" para un empleado-subcontratista en una obra
+ * distinta. Se guarda como concepto CERTIFICACION con obraId + descripción. */
+type LineaPorTanto = { obraId: string; monto: string; descripcion: string };
+
 type EmpleadoCargado = {
   empleadoId: string;
   nombre: string;
@@ -231,6 +235,7 @@ type EmpleadoCargado = {
   dias: string;
   horasExtras: string;
   descripcion: string;
+  lineasPorTanto: LineaPorTanto[];
 };
 
 function NuevaCertificacionWizard({
@@ -243,6 +248,7 @@ function NuevaCertificacionWizard({
   onCreated: () => void;
 }) {
   const nav = useNavigate();
+  const [modoSubcontratista, setModoSubcontratista] = useState(false);
   const [obraId, setObraId] = useState('');
   const [semanaInicio, setSemanaInicio] = useState(() =>
     mondayOfWeek(new Date()).toISOString().slice(0, 10),
@@ -276,7 +282,8 @@ function NuevaCertificacionWizard({
       seleccionados.reduce((acc, e) => {
         const d = Number(e.dias) || 0;
         const h = Number(e.horasExtras) || 0;
-        return acc + d * e.jornal + h * e.valorHoraExtra;
+        const porTanto = e.lineasPorTanto.reduce((s, l) => s + (Number(l.monto) || 0), 0);
+        return acc + d * e.jornal + h * e.valorHoraExtra + porTanto;
       }, 0),
     [seleccionados],
   );
@@ -301,6 +308,7 @@ function NuevaCertificacionWizard({
           dias: '0',
           horasExtras: '0',
           descripcion: '',
+          lineasPorTanto: [],
         },
       ]);
     }
@@ -319,14 +327,31 @@ function NuevaCertificacionWizard({
     mutationFn: async () => {
       if (!obraId) throw new Error('Elegí una obra');
       if (seleccionados.length === 0) throw new Error('Elegí al menos un empleado');
-      const sinDias = seleccionados.filter(
-        (s) => (Number(s.dias) || 0) <= 0 && (Number(s.horasExtras) || 0) <= 0,
-      );
-      if (sinDias.length > 0) {
+      // Validar que cada persona tenga algo que cobrar: días, horas extras
+      // o al menos una línea por tanto válida.
+      const sinPago = seleccionados.filter((s) => {
+        const d = Number(s.dias) || 0;
+        const h = Number(s.horasExtras) || 0;
+        const porTantoValidas = s.lineasPorTanto.filter(
+          (l) => l.obraId && Number(l.monto) > 0,
+        );
+        return d <= 0 && h <= 0 && porTantoValidas.length === 0;
+      });
+      if (sinPago.length > 0) {
         throw new Error(
-          `Cargá días o horas para: ${sinDias.map((s) => s.nombre).join(', ')}`,
+          `Cargá días, horas o líneas por tanto para: ${sinPago.map((s) => s.nombre).join(', ')}`,
         );
       }
+      // Validar que las líneas por tanto con monto tengan obra
+      for (const s of seleccionados) {
+        for (const l of s.lineasPorTanto) {
+          const m = Number(l.monto) || 0;
+          if (m > 0 && !l.obraId) {
+            throw new Error(`Falta obra en una línea por tanto de ${s.nombre}`);
+          }
+        }
+      }
+
       const liq = await liquidacionesService.create({
         semanaInicio,
         semanaFin,
@@ -353,6 +378,20 @@ function NuevaCertificacionWizard({
             valorUnitario: s.valorHoraExtra,
             monto: hs * s.valorHoraExtra,
           });
+        }
+        // Líneas por tanto → conceptos CERTIFICACION imputados a la obra de
+        // cada línea. El service de liquidaciones reparte el egreso final por
+        // obra según obraId de los conceptos (ya está preparado).
+        for (const l of s.lineasPorTanto) {
+          const m = Number(l.monto) || 0;
+          if (m > 0 && l.obraId) {
+            conceptos.push({
+              tipo: 'CERTIFICACION',
+              descripcion: l.descripcion.trim() || 'Trabajo por tanto',
+              obraId: l.obraId,
+              monto: m,
+            });
+          }
         }
         if (s.descripcion.trim()) {
           conceptos.push({
@@ -398,6 +437,42 @@ function NuevaCertificacionWizard({
         </DialogHeader>
 
         <div className="space-y-5">
+          {/* 0. Modo (afecta la UI del paso 3) */}
+          <section className="rounded-md border border-border bg-muted/5 p-3">
+            <Label className="text-xs uppercase tracking-wide text-muted mb-2 block">
+              Modo
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setModoSubcontratista(false)}
+                className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                  !modoSubcontratista
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted/5'
+                }`}
+              >
+                Normal
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoSubcontratista(true)}
+                className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                  modoSubcontratista
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted/5'
+                }`}
+              >
+                Subcontratista (por tanto)
+              </button>
+            </div>
+            <p className="text-xs text-muted mt-2">
+              {modoSubcontratista
+                ? 'Además de los jornales/horas, podés agregar líneas "por tanto" a cada persona (monto + obra + descripción). Útil para empleados que también cobran como subcontratistas en otras obras.'
+                : 'Solo jornales y horas extras en la obra elegida abajo.'}
+            </p>
+          </section>
+
           {/* 1. Obra + semana */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">1. Obra y semana</h3>
@@ -499,7 +574,11 @@ function NuevaCertificacionWizard({
                 {seleccionados.map((s) => {
                   const d = Number(s.dias) || 0;
                   const h = Number(s.horasExtras) || 0;
-                  const sub = d * s.jornal + h * s.valorHoraExtra;
+                  const porTanto = s.lineasPorTanto.reduce(
+                    (acc, l) => acc + (Number(l.monto) || 0),
+                    0,
+                  );
+                  const sub = d * s.jornal + h * s.valorHoraExtra + porTanto;
                   return (
                     <div
                       key={s.empleadoId}
@@ -564,6 +643,101 @@ function NuevaCertificacionWizard({
                           />
                         </div>
                       </div>
+
+                      {modoSubcontratista && (
+                        <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold uppercase tracking-wide text-primary">
+                              Líneas por tanto (otras obras)
+                            </Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                actualizarEmpleado(s.empleadoId, {
+                                  lineasPorTanto: [
+                                    ...s.lineasPorTanto,
+                                    { obraId: '', monto: '', descripcion: '' },
+                                  ],
+                                })
+                              }
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Agregar línea
+                            </Button>
+                          </div>
+                          {s.lineasPorTanto.length === 0 && (
+                            <p className="text-[11px] text-muted italic">
+                              Sin líneas por tanto. Si {s.nombre} también cobra como subcontratista
+                              en otra obra, agregá una línea con obra + monto + descripción.
+                            </p>
+                          )}
+                          {s.lineasPorTanto.map((l, idx) => (
+                            <div
+                              key={idx}
+                              className="grid grid-cols-[1fr_120px_1.5fr_auto] gap-2 items-center"
+                            >
+                              <Combobox
+                                options={obrasOpts}
+                                value={l.obraId}
+                                onChange={(v) =>
+                                  actualizarEmpleado(s.empleadoId, {
+                                    lineasPorTanto: s.lineasPorTanto.map((x, i) =>
+                                      i === idx ? { ...x, obraId: v } : x,
+                                    ),
+                                  })
+                                }
+                                placeholder="Obra…"
+                                size="sm"
+                              />
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={l.monto}
+                                onChange={(e) =>
+                                  actualizarEmpleado(s.empleadoId, {
+                                    lineasPorTanto: s.lineasPorTanto.map((x, i) =>
+                                      i === idx ? { ...x, monto: e.target.value } : x,
+                                    ),
+                                  })
+                                }
+                                placeholder="Monto"
+                                className="num text-right h-8 text-xs"
+                              />
+                              <Input
+                                value={l.descripcion}
+                                onChange={(e) =>
+                                  actualizarEmpleado(s.empleadoId, {
+                                    lineasPorTanto: s.lineasPorTanto.map((x, i) =>
+                                      i === idx ? { ...x, descripcion: e.target.value } : x,
+                                    ),
+                                  })
+                                }
+                                placeholder="Qué trabajo se paga…"
+                                className="h-8 text-xs"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() =>
+                                  actualizarEmpleado(s.empleadoId, {
+                                    lineasPorTanto: s.lineasPorTanto.filter(
+                                      (_, i) => i !== idx,
+                                    ),
+                                  })
+                                }
+                                className="h-8 w-8"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex justify-end text-sm pt-1 border-t border-border">
                         <div>
                           Subtotal:{' '}
