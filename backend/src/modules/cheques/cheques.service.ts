@@ -1,8 +1,23 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoCheque, Prisma, TipoCheque } from '@prisma/client';
+import {
+  Caja,
+  CotizacionTipo,
+  EstadoCheque,
+  EstadoMovimiento,
+  FuenteCotizacion,
+  MedioPago,
+  Moneda,
+  OrigenMovimiento,
+  Prisma,
+  TipoCaja,
+  TipoCheque,
+  TipoMovimiento,
+} from '@prisma/client';
+import { arsAUsd, usdAArs } from '@cardi/shared';
 import { assertTransition } from '../../common/state-machines';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { CotizacionesService } from '../cotizaciones/cotizaciones.service';
 import type {
   CambiarEstadoChequeDto,
   CreateChequeDto,
@@ -22,6 +37,7 @@ export class ChequesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditoriaService,
+    private readonly cotizaciones: CotizacionesService,
   ) {}
 
   findAll(filtros: FiltrosChequeDto) {
@@ -60,35 +76,192 @@ export class ChequesService {
   }
 
   async create(dto: CreateChequeDto, userId: string) {
-    const creado = await this.prisma.cheque.create({
-      data: {
-        tipo: dto.tipo,
-        numero: dto.numero.trim(),
-        banco: dto.banco,
-        sucursal: dto.sucursal,
-        librador: dto.librador,
-        titular: dto.titular,
-        cuit: dto.cuit,
-        monto: new Prisma.Decimal(dto.monto),
-        moneda: dto.moneda,
-        fechaEmision: dto.fechaEmision,
-        fechaPago: dto.fechaPago,
-        estado: ESTADO_INICIAL[dto.tipo],
-        beneficiarioId: dto.beneficiarioId,
-        observaciones: dto.observaciones,
-        createdById: userId,
-        updatedById: userId,
-      },
-      include: { beneficiario: true },
+    // Para TERCERO: resolver la caja CHEQUES_TERCEROS destino del ingreso.
+    // Para PROPIO: por ahora no se genera movimiento (diferido: ver R4/R5 del
+    // exploration doc — el cheque propio toca banco al debitarse, no al emitirse).
+    let cajaDestino: Caja | null = null;
+    if (dto.tipo === TipoCheque.TERCERO) {
+      cajaDestino = await this.resolverCajaCheques(dto.cajaIngresoId, dto.moneda);
+    }
+
+    if (dto.obraIngresoId) {
+      const obra = await this.prisma.obra.findUnique({ where: { id: dto.obraIngresoId } });
+      if (!obra || !obra.activo) {
+        throw new BadRequestException('La obra indicada no existe o está inactiva');
+      }
+    }
+
+    const { cotizacion, cotizacionTipo } = cajaDestino
+      ? await this.resolverCotizacion()
+      : { cotizacion: 0, cotizacionTipo: CotizacionTipo.MANUAL };
+
+    const { creado, movimiento } = await this.prisma.$transaction(async (tx) => {
+      const cheque = await tx.cheque.create({
+        data: {
+          tipo: dto.tipo,
+          numero: dto.numero.trim(),
+          banco: dto.banco,
+          sucursal: dto.sucursal,
+          librador: dto.librador,
+          titular: dto.titular,
+          cuit: dto.cuit,
+          monto: new Prisma.Decimal(dto.monto),
+          moneda: dto.moneda,
+          fechaEmision: dto.fechaEmision,
+          fechaPago: dto.fechaPago,
+          estado: ESTADO_INICIAL[dto.tipo],
+          beneficiarioId: dto.beneficiarioId,
+          observaciones: dto.observaciones,
+          createdById: userId,
+          updatedById: userId,
+        },
+        include: { beneficiario: true },
+      });
+
+      let mov = null;
+      if (cajaDestino) {
+        const { montoArs, montoUsd } = this.convertirMontos(
+          dto.monto,
+          cajaDestino.moneda,
+          cotizacion,
+        );
+        mov = await tx.movimiento.create({
+          data: {
+            tipo: TipoMovimiento.INGRESO,
+            fecha: dto.fechaEmision,
+            cajaId: cajaDestino.id,
+            moneda: cajaDestino.moneda,
+            monto: new Prisma.Decimal(dto.monto),
+            medioPago: MedioPago.CHEQUE_TERCERO,
+            descripcion: this.descripcionCheque(cheque),
+            cotizacion: new Prisma.Decimal(cotizacion),
+            cotizacionTipo,
+            montoArs: new Prisma.Decimal(montoArs),
+            montoUsd: new Prisma.Decimal(montoUsd),
+            beneficiarioId: dto.beneficiarioId,
+            obraIngresoId: dto.obraIngresoId,
+            chequeId: cheque.id,
+            origen: OrigenMovimiento.MANUAL,
+            origenId: cheque.id,
+            estado: EstadoMovimiento.CONFIRMADO,
+            createdById: userId,
+            updatedById: userId,
+          },
+        });
+      }
+
+      return { creado: cheque, movimiento: mov };
     });
+
     void this.audit.registrar({
       usuarioId: userId,
       accion: 'CREAR',
       entidad: 'Cheque',
       entidadId: creado.id,
-      despues: creado as unknown,
+      despues: { ...creado, movimientoIngresoId: movimiento?.id } as unknown,
+      observacion: movimiento
+        ? `Ingreso ${movimiento.id} generado en ${cajaDestino?.nombre}`
+        : undefined,
     });
     return creado;
+  }
+
+  // =========== Helpers para generar el ingreso del cheque TERCERO ===========
+
+  private async resolverCajaCheques(cajaIdSugerida: string | undefined, moneda: Moneda) {
+    if (cajaIdSugerida) {
+      const caja = await this.prisma.caja.findUnique({ where: { id: cajaIdSugerida } });
+      if (!caja || !caja.activo) {
+        throw new BadRequestException('La caja indicada no existe o está inactiva');
+      }
+      if (caja.tipo !== TipoCaja.CHEQUES_TERCEROS) {
+        throw new BadRequestException(
+          `La caja ${caja.nombre} no es de tipo CHEQUES_TERCEROS`,
+        );
+      }
+      if (caja.moneda !== moneda) {
+        throw new BadRequestException(
+          `El cheque es ${moneda} pero la caja está en ${caja.moneda}`,
+        );
+      }
+      return caja;
+    }
+    // Auto-detectar la única caja CHEQUES_TERCEROS activa de esa moneda
+    const candidatas = await this.prisma.caja.findMany({
+      where: { tipo: TipoCaja.CHEQUES_TERCEROS, moneda, activo: true },
+    });
+    if (candidatas.length === 0) {
+      throw new BadRequestException(
+        `No hay ninguna caja CHEQUES_TERCEROS en ${moneda}. Creala primero en Billetera → Cuentas.`,
+      );
+    }
+    if (candidatas.length > 1) {
+      throw new BadRequestException(
+        `Hay ${candidatas.length} cajas CHEQUES_TERCEROS en ${moneda}: especificá cuál usar.`,
+      );
+    }
+    return candidatas[0];
+  }
+
+  private descripcionCheque(cheque: {
+    numero: string;
+    banco: string | null;
+    librador: string | null;
+    titular: string | null;
+  }): string {
+    const partes = [`Cheque N° ${cheque.numero}`];
+    if (cheque.banco) partes.push(cheque.banco);
+    const emisor = cheque.librador ?? cheque.titular;
+    if (emisor) partes.push(emisor);
+    return partes.join(' · ');
+  }
+
+  private async resolverCotizacion(): Promise<{
+    cotizacion: number;
+    cotizacionTipo: CotizacionTipo;
+  }> {
+    const ultima = await this.cotizaciones.ultimaCotizacion('BLUE');
+    if (ultima) {
+      return {
+        cotizacion: Number(ultima.venta),
+        cotizacionTipo:
+          ultima.fuente === FuenteCotizacion.MANUAL
+            ? CotizacionTipo.MANUAL
+            : CotizacionTipo.BLUE_VENTA,
+      };
+    }
+    try {
+      const res = await this.cotizaciones.getBlueHoy();
+      const c = res.cotizaciones[0];
+      return {
+        cotizacion: c.venta,
+        cotizacionTipo:
+          c.fuente === FuenteCotizacion.MANUAL
+            ? CotizacionTipo.MANUAL
+            : CotizacionTipo.BLUE_VENTA,
+      };
+    } catch {
+      throw new BadRequestException(
+        'No se pudo obtener la cotización. Cargá una manualmente desde Cotización.',
+      );
+    }
+  }
+
+  private convertirMontos(
+    monto: number,
+    moneda: Moneda,
+    cotizacion: number,
+  ): { montoArs: string; montoUsd: string } {
+    if (moneda === Moneda.ARS) {
+      return {
+        montoArs: monto.toFixed(2),
+        montoUsd: arsAUsd(monto, cotizacion).toFixed(2),
+      };
+    }
+    return {
+      montoArs: usdAArs(monto, cotizacion).toFixed(2),
+      montoUsd: monto.toFixed(2),
+    };
   }
 
   async update(id: string, dto: UpdateChequeDto, userId: string) {

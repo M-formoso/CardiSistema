@@ -17,6 +17,11 @@ export const CreateChequeSchema = z
     fechaPago: z.coerce.date(),
     beneficiarioId: z.string().uuid().optional(),
     observaciones: z.string().max(1000).optional(),
+    // Para cheques TERCERO: caja destino del ingreso (opcional; si hay una
+    // sola CHEQUES_TERCEROS de la moneda del cheque, se usa esa).
+    cajaIngresoId: z.string().uuid().optional(),
+    // Obra opcional a imputar el ingreso (p. ej. anticipo de una obra).
+    obraIngresoId: z.string().uuid().optional(),
   })
   .refine((v) => v.fechaPago >= v.fechaEmision, {
     message: 'La fecha de pago debe ser mayor o igual a la de emisión',
