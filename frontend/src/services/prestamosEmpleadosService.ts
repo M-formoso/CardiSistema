@@ -9,6 +9,7 @@ export type PrestamoEmpleado = {
   monto: string;
   moneda: 'ARS' | 'USD';
   saldoPendiente: string;
+  cantidadCuotas?: number | null;
   estado: EstadoPrestamoEmpleado;
   movimientoId?: string | null;
   observaciones?: string | null;
@@ -37,6 +38,7 @@ export const prestamosEmpleadosService = {
     monto: number;
     observaciones?: string;
     movimientoId?: string;
+    cantidadCuotas?: number;
   }) => (await apiClient.post<PrestamoEmpleado>('/prestamos-empleados', input)).data,
   anular: async (id: string, motivo: string) =>
     (await apiClient.patch<PrestamoEmpleado>(`/prestamos-empleados/${id}/anular`, { motivo })).data,

@@ -29,6 +29,8 @@ export const ConceptoSchema = z.object({
   monto: z.coerce.number(), // bruto, siempre positivo; el service aplica signo según tipo
   obraId: z.string().uuid().optional(),
   prestamoId: z.string().uuid().optional(), // requerido para PRESTAMO_APLICACION
+  // Solo para PRESTAMO_ENTREGADO: cantidad de cuotas acordada al dar el préstamo.
+  cantidadCuotas: z.coerce.number().int().positive().optional(),
   orden: z.coerce.number().int().min(0).optional(),
 });
 export type ConceptoInput = z.infer<typeof ConceptoSchema>;

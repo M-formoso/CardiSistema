@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, ExternalLink, Search, Check, X, Trash2 } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
 } from '@/services/liquidacionesService';
 import { empleadosService, type Empleado } from '@/services/empleadosService';
 import { obrasService } from '@/services/obrasService';
+import { prestamosEmpleadosService } from '@/services/prestamosEmpleadosService';
 import { formatearFecha, formatearMonto } from '@/lib/formatters';
 import { usePagination } from '@/lib/usePagination';
 import { Pagination } from '@/components/ui/pagination';
@@ -227,6 +228,9 @@ export function CertificacionesPage() {
  * distinta. Se guarda como concepto CERTIFICACION con obraId + descripción. */
 type LineaPorTanto = { obraId: string; monto: string; descripcion: string };
 
+/** Préstamo nuevo a entregar en la misma cert (opcional por empleado). */
+type PrestamoNuevo = { monto: string; cuotas: string };
+
 type EmpleadoCargado = {
   empleadoId: string;
   nombre: string;
@@ -236,6 +240,9 @@ type EmpleadoCargado = {
   horasExtras: string;
   descripcion: string;
   lineasPorTanto: LineaPorTanto[];
+  prestamoNuevo: PrestamoNuevo | null;
+  /** prestamoId → monto a aplicar esta semana. Vacío/0 = no aplicar. */
+  aplicacionesPrestamo: Record<string, string>;
 };
 
 function NuevaCertificacionWizard({
@@ -277,13 +284,34 @@ function NuevaCertificacionWizard({
     );
   }, [empleados, busqueda]);
 
+  // Préstamos vigentes por empleado — una query por cada seleccionado.
+  const prestamosQueries = useQueries({
+    queries: seleccionados.map((s) => ({
+      queryKey: ['prestamos', 'vigentes', s.empleadoId],
+      queryFn: () => prestamosEmpleadosService.vigentesDe(s.empleadoId),
+      enabled: !!s.empleadoId,
+    })),
+  });
+  const prestamosPorEmpleado = useMemo(() => {
+    const map: Record<string, Awaited<ReturnType<typeof prestamosEmpleadosService.vigentesDe>>> = {};
+    seleccionados.forEach((s, i) => {
+      map[s.empleadoId] = prestamosQueries[i]?.data ?? [];
+    });
+    return map;
+  }, [seleccionados, prestamosQueries]);
+
   const total = useMemo(
     () =>
       seleccionados.reduce((acc, e) => {
         const d = Number(e.dias) || 0;
         const h = Number(e.horasExtras) || 0;
         const porTanto = e.lineasPorTanto.reduce((s, l) => s + (Number(l.monto) || 0), 0);
-        return acc + d * e.jornal + h * e.valorHoraExtra + porTanto;
+        const prestEntregado = Number(e.prestamoNuevo?.monto) || 0;
+        const prestAplicado = Object.values(e.aplicacionesPrestamo).reduce(
+          (s, v) => s + (Number(v) || 0),
+          0,
+        );
+        return acc + d * e.jornal + h * e.valorHoraExtra + porTanto + prestEntregado - prestAplicado;
       }, 0),
     [seleccionados],
   );
@@ -309,6 +337,8 @@ function NuevaCertificacionWizard({
           horasExtras: '0',
           descripcion: '',
           lineasPorTanto: [],
+          prestamoNuevo: null,
+          aplicacionesPrestamo: {},
         },
       ]);
     }
@@ -335,11 +365,12 @@ function NuevaCertificacionWizard({
         const porTantoValidas = s.lineasPorTanto.filter(
           (l) => l.obraId && Number(l.monto) > 0,
         );
-        return d <= 0 && h <= 0 && porTantoValidas.length === 0;
+        const prestamoEntr = Number(s.prestamoNuevo?.monto) || 0;
+        return d <= 0 && h <= 0 && porTantoValidas.length === 0 && prestamoEntr <= 0;
       });
       if (sinPago.length > 0) {
         throw new Error(
-          `Cargá días, horas o líneas por tanto para: ${sinPago.map((s) => s.nombre).join(', ')}`,
+          `Cargá días, horas, líneas por tanto o un préstamo para: ${sinPago.map((s) => s.nombre).join(', ')}`,
         );
       }
       // Validar que las líneas por tanto con monto tengan obra
@@ -348,6 +379,13 @@ function NuevaCertificacionWizard({
           const m = Number(l.monto) || 0;
           if (m > 0 && !l.obraId) {
             throw new Error(`Falta obra en una línea por tanto de ${s.nombre}`);
+          }
+        }
+        if (s.prestamoNuevo) {
+          const m = Number(s.prestamoNuevo.monto) || 0;
+          const cu = Number(s.prestamoNuevo.cuotas) || 0;
+          if (m > 0 && cu <= 0) {
+            throw new Error(`Préstamo de ${s.nombre}: cargá la cantidad de cuotas`);
           }
         }
       }
@@ -390,6 +428,32 @@ function NuevaCertificacionWizard({
               descripcion: l.descripcion.trim() || 'Trabajo por tanto',
               obraId: l.obraId,
               monto: m,
+            });
+          }
+        }
+        // Préstamo nuevo → PRESTAMO_ENTREGADO (suma al bruto, crea el préstamo
+        // en backend). cantidadCuotas se guarda en el modelo del préstamo.
+        if (s.prestamoNuevo) {
+          const m = Number(s.prestamoNuevo.monto) || 0;
+          const cu = Number(s.prestamoNuevo.cuotas) || 0;
+          if (m > 0 && cu > 0) {
+            conceptos.push({
+              tipo: 'PRESTAMO_ENTREGADO',
+              descripcion: `Préstamo en ${cu} cuota${cu === 1 ? '' : 's'}`,
+              monto: m,
+              cantidadCuotas: cu,
+            });
+          }
+        }
+        // Aplicaciones de préstamos vigentes → PRESTAMO_APLICACION (resta).
+        for (const [prestamoId, montoStr] of Object.entries(s.aplicacionesPrestamo)) {
+          const m = Number(montoStr) || 0;
+          if (m > 0) {
+            conceptos.push({
+              tipo: 'PRESTAMO_APLICACION',
+              descripcion: 'Cuota de préstamo',
+              monto: m,
+              prestamoId,
             });
           }
         }
@@ -738,9 +802,15 @@ function NuevaCertificacionWizard({
                         </div>
                       )}
 
+                      <PrestamosBlock
+                        empleado={s}
+                        vigentes={prestamosPorEmpleado[s.empleadoId] ?? []}
+                        onChange={(patch) => actualizarEmpleado(s.empleadoId, patch)}
+                      />
+
                       <div className="flex justify-end text-sm pt-1 border-t border-border">
                         <div>
-                          Subtotal:{' '}
+                          Subtotal (neto a pagar):{' '}
                           <span className="font-semibold num">{formatearMonto(sub, 'ARS')}</span>
                         </div>
                       </div>
@@ -796,4 +866,182 @@ function mondayOfWeek(d: Date): Date {
   date.setDate(date.getDate() + diff);
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+/**
+ * Bloque de préstamos por empleado dentro del wizard:
+ * - "Préstamos vigentes": lista los préstamos con saldo > 0. Para cada uno,
+ *   un input precargado con la cuota sugerida (monto / cantidadCuotas); el
+ *   usuario puede dejarlo en 0 para no aplicar esta semana (Dani: la deuda
+ *   sigue y se le avisa la semana siguiente).
+ * - "Préstamo nuevo": si el empleado pide un préstamo, se carga monto +
+ *   cantidad de cuotas semanales. Se crea al confirmar la cert, y en la
+ *   semana siguiente ya aparece como vigente con cuota sugerida.
+ */
+function PrestamosBlock({
+  empleado,
+  vigentes,
+  onChange,
+}: {
+  empleado: EmpleadoCargado;
+  vigentes: Array<{
+    id: string;
+    fecha: string;
+    monto: string;
+    saldoPendiente: string;
+    cantidadCuotas?: number | null;
+    _count?: { aplicaciones: number };
+  }>;
+  onChange: (patch: Partial<EmpleadoCargado>) => void;
+}) {
+  const tienePrestamoNuevo = empleado.prestamoNuevo !== null;
+
+  function setAplicacion(prestamoId: string, monto: string) {
+    const nuevo = { ...empleado.aplicacionesPrestamo };
+    if (!monto || Number(monto) === 0) delete nuevo[prestamoId];
+    else nuevo[prestamoId] = monto;
+    onChange({ aplicacionesPrestamo: nuevo });
+  }
+
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning/5 p-2.5 space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-semibold uppercase tracking-wide text-warning">
+          Préstamos
+        </Label>
+        {!tienePrestamoNuevo && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onChange({ prestamoNuevo: { monto: '', cuotas: '4' } })
+            }
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Entregar préstamo
+          </Button>
+        )}
+      </div>
+
+      {vigentes.length === 0 && !tienePrestamoNuevo && (
+        <p className="text-[11px] text-muted italic">
+          Sin préstamos vigentes. Si {empleado.nombre} pide uno esta semana, usá "Entregar préstamo".
+        </p>
+      )}
+
+      {vigentes.map((p) => {
+        const saldo = Number(p.saldoPendiente);
+        const aplicadas = p._count?.aplicaciones ?? 0;
+        const cuotaSugerida =
+          p.cantidadCuotas && p.cantidadCuotas > 0
+            ? Math.min(Number(p.monto) / p.cantidadCuotas, saldo)
+            : saldo;
+        const aplicando = empleado.aplicacionesPrestamo[p.id] ?? '';
+        const totalCuotas = p.cantidadCuotas ?? 0;
+        const cuotaN = aplicadas + 1;
+        return (
+          <div key={p.id} className="rounded bg-card border border-border p-2 space-y-1">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div>
+                <div className="font-medium">
+                  Préstamo del {formatearFecha(p.fecha)} · {formatearMonto(p.monto, 'ARS')}
+                  {totalCuotas > 0 && (
+                    <span className="text-muted ml-1">
+                      · cuota {cuotaN}/{totalCuotas}
+                    </span>
+                  )}
+                </div>
+                <div className="text-muted">
+                  Saldo: {formatearMonto(saldo, 'ARS')} · Sugerida:{' '}
+                  {formatearMonto(cuotaSugerida, 'ARS')}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Label className="text-[11px] text-muted">Aplicar</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={saldo}
+                  value={aplicando}
+                  onChange={(e) => setAplicacion(p.id, e.target.value)}
+                  placeholder="0"
+                  className="num text-right h-7 text-xs w-24"
+                />
+                {!aplicando && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setAplicacion(p.id, cuotaSugerida.toFixed(2))}
+                  >
+                    Aplicar sugerida
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {tienePrestamoNuevo && empleado.prestamoNuevo && (
+        <div className="rounded bg-card border border-primary/30 p-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-[11px] font-semibold text-primary">
+              Préstamo nuevo a entregar
+            </Label>
+            <button
+              type="button"
+              onClick={() => onChange({ prestamoNuevo: null })}
+              className="text-muted hover:text-foreground"
+              aria-label="Quitar préstamo"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-[1fr_120px] gap-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">Monto</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={empleado.prestamoNuevo.monto}
+                onChange={(e) =>
+                  onChange({
+                    prestamoNuevo: { ...empleado.prestamoNuevo!, monto: e.target.value },
+                  })
+                }
+                placeholder="Ej: 100000"
+                className="num text-right h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Cuotas (semanas)</Label>
+              <Input
+                type="number"
+                step="1"
+                min="1"
+                max="52"
+                value={empleado.prestamoNuevo.cuotas}
+                onChange={(e) =>
+                  onChange({
+                    prestamoNuevo: { ...empleado.prestamoNuevo!, cuotas: e.target.value },
+                  })
+                }
+                className="num text-right h-8 text-xs"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-muted">
+            El préstamo se entrega como parte de esta certificación (suma al neto). Las cuotas se
+            descuentan automáticamente en las próximas semanas; podés saltar alguna si el empleado
+            lo pide.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }

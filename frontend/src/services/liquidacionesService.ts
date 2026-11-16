@@ -86,6 +86,7 @@ export type ConceptoInput = {
   monto: number; // siempre positivo; el backend aplica el signo según el tipo
   obraId?: string;
   prestamoId?: string;
+  cantidadCuotas?: number; // solo PRESTAMO_ENTREGADO
   orden?: number;
 };
 

@@ -102,6 +102,7 @@ export class PrestamosEmpleadosService {
         fecha: dto.fecha,
         monto,
         saldoPendiente: monto,
+        cantidadCuotas: dto.cantidadCuotas ?? null,
         movimientoId: dto.movimientoId,
         observaciones: dto.observaciones,
         estado: EstadoPrestamoEmpleado.VIGENTE,

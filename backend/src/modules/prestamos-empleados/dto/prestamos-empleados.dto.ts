@@ -9,6 +9,9 @@ export const CreatePrestamoSchema = z.object({
   observaciones: z.string().max(500).optional(),
   // movimientoId opcional: viene cuando el préstamo nace de un egreso en billetera
   movimientoId: z.string().uuid().optional(),
+  // Cantidad de cuotas semanales acordada (opcional). Usada por la UI de
+  // certificaciones para sugerir monto/cuotas como cuota en semanas siguientes.
+  cantidadCuotas: z.coerce.number().int().positive().optional(),
 });
 export class CreatePrestamoDto extends createZodDto(CreatePrestamoSchema) {}
 

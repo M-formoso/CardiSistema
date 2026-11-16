@@ -216,6 +216,7 @@ export class LiquidacionesService {
               fecha: new Date(),
               monto: montoBruto,
               saldoPendiente: montoBruto,
+              cantidadCuotas: c.cantidadCuotas ?? null,
               estado: EstadoPrestamoEmpleado.VIGENTE,
               observaciones: c.descripcion,
               createdById: userId,

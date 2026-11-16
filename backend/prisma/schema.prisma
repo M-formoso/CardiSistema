@@ -550,6 +550,10 @@ model PrestamoEmpleado {
   monto          Decimal                @db.Decimal(14, 2)
   moneda         Moneda                 @default(ARS)
   saldoPendiente Decimal                @db.Decimal(14, 2)
+  /// Cantidad de cuotas semanales acordadas al crear. Opcional: si viene,
+  /// el frontend sugiere monto/cantidadCuotas como cuota en la cert siguiente.
+  /// Si no viene, la cuota se decide a mano cada semana.
+  cantidadCuotas Int?
   estado         EstadoPrestamoEmpleado @default(VIGENTE)
   movimientoId   String? // egreso en billetera que lo originó
   observaciones  String?
