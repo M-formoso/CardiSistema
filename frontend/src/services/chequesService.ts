@@ -44,6 +44,8 @@ export type CreateChequeInput = {
   fechaPago: string;
   beneficiarioId?: string;
   observaciones?: string;
+  cajaIngresoId?: string;
+  obraIngresoId?: string;
 };
 
 export const chequesService = {
