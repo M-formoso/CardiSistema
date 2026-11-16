@@ -190,6 +190,18 @@ export function NuevoEgresoDialog({
     setLineas(lineas.map((l, i) => ({ ...l, monto: redondeadas[i].toFixed(2) })));
   }
 
+  // "Gasto general": reemplaza las líneas por una por cada obra activa, con
+  // el monto total repartido en partes iguales. Útil para gastos como IPF
+  // que afectan a toda la empresa, no a una obra en particular.
+  function repartirEnTodasLasObras() {
+    if (obras.length === 0 || totalNum <= 0) return;
+    const partes = totalNum / obras.length;
+    const redondeadas = obras.map(() => Math.round(partes * 100) / 100);
+    const suma = redondeadas.reduce((a, b) => a + b, 0);
+    redondeadas[redondeadas.length - 1] += Math.round((totalNum - suma) * 100) / 100;
+    setLineas(obras.map((o, i) => ({ obraId: o.id, monto: redondeadas[i].toFixed(2) })));
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -360,9 +372,19 @@ export function NuevoEgresoDialog({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <Label>Imputación a obra(s) *</Label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={repartirEnTodasLasObras}
+                  disabled={obras.length === 0 || totalNum <= 0}
+                  title="Reparte el monto en partes iguales entre todas las obras activas (ej: IPF, gasto general)"
+                >
+                  Gasto general
+                </Button>
                 {lineas.length > 1 && (
                   <Button type="button" variant="outline" size="sm" onClick={autoDistribuir}>
                     Dividir en partes iguales
