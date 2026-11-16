@@ -302,11 +302,66 @@ export class ChequesService {
       ? `${actual.observaciones ? actual.observaciones + '\n' : ''}[${dto.estado}] ${dto.observacion}`
       : actual.observaciones;
 
-    const despues = await this.prisma.cheque.update({
-      where: { id },
-      data: { estado: dto.estado, observaciones: nuevaObs, updatedById: userId },
-      include: { beneficiario: true },
+    // Si se está anulando un cheque TERCERO que estaba EN_CARTERA, revertir
+    // el INGRESO asociado (si existe). Para los anulados desde otros estados
+    // no tocamos los movimientos — ese análisis queda para una iteración
+    // futura porque implica decisiones sobre reversas de egresos ya emitidos.
+    const anuladoDesdeCartera =
+      dto.estado === EstadoCheque.ANULADO &&
+      actual.estado === EstadoCheque.EN_CARTERA &&
+      actual.tipo === TipoCheque.TERCERO;
+
+    const despues = await this.prisma.$transaction(async (tx) => {
+      if (anuladoDesdeCartera) {
+        const ingresos = actual.movimientos.filter(
+          (m) =>
+            m.tipo === TipoMovimiento.INGRESO &&
+            m.estado === EstadoMovimiento.CONFIRMADO,
+        );
+        for (const ing of ingresos) {
+          await tx.movimiento.update({
+            where: { id: ing.id },
+            data: {
+              estado: EstadoMovimiento.ANULADO,
+              anuladoAt: new Date(),
+              anuladoPorId: userId,
+              motivoAnulacion: `Cheque anulado${dto.observacion ? ': ' + dto.observacion : ''}`,
+              updatedById: userId,
+            },
+          });
+          await tx.movimiento.create({
+            data: {
+              tipo: TipoMovimiento.EGRESO,
+              fecha: new Date(),
+              cajaId: ing.cajaId,
+              moneda: ing.moneda,
+              monto: ing.monto,
+              medioPago: ing.medioPago,
+              descripcion: `Reversa · ${ing.descripcion ?? ''}`.trim(),
+              cotizacion: ing.cotizacion,
+              cotizacionTipo: ing.cotizacionTipo,
+              montoArs: ing.montoArs,
+              montoUsd: ing.montoUsd,
+              beneficiarioId: ing.beneficiarioId,
+              categoriaId: ing.categoriaId,
+              movimientoOriginalId: ing.id,
+              grupoId: ing.grupoId,
+              origen: ing.origen,
+              origenId: ing.origenId,
+              estado: EstadoMovimiento.REVERSA,
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+        }
+      }
+      return tx.cheque.update({
+        where: { id },
+        data: { estado: dto.estado, observaciones: nuevaObs, updatedById: userId },
+        include: { beneficiario: true },
+      });
     });
+
     void this.audit.registrar({
       usuarioId: userId,
       accion: 'ACTUALIZAR',
@@ -314,7 +369,9 @@ export class ChequesService {
       entidadId: id,
       antes: actual as unknown,
       despues: despues as unknown,
-      observacion: `Cambio estado → ${dto.estado}`,
+      observacion: anuladoDesdeCartera
+        ? `Cambio estado → ${dto.estado} (ingreso revertido)`
+        : `Cambio estado → ${dto.estado}`,
     });
     return despues;
   }
