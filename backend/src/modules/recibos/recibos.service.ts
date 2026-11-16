@@ -139,15 +139,16 @@ export class RecibosService {
         const stream = fs.createWriteStream(outPath);
         doc.pipe(stream);
 
-        // Cada recibo ~ 240pt de alto (A4 = 842pt; margen 30pt; = 3 por hoja)
-        const ALTO_RECIBO = 245;
+        // Cada recibo ~ 187pt de alto (A4 = 842pt; margen 30pt; = 4 por hoja)
+        const ALTO_RECIBO = 192;
         const MARGEN_SUP = 30;
         const Y_INICIAL = MARGEN_SUP;
+        const RECIBOS_POR_HOJA = 4;
 
         const fechaSemana = `${this.formatDate(liq.semanaInicio)} al ${this.formatDate(liq.semanaFin)}`;
 
         items.forEach((item, idx) => {
-          const slot = idx % 3;
+          const slot = idx % RECIBOS_POR_HOJA;
           if (idx > 0 && slot === 0) doc.addPage();
           const y = Y_INICIAL + slot * ALTO_RECIBO;
           this.renderReciboCompacto(doc, {
@@ -213,38 +214,35 @@ export class RecibosService {
 
     // ========== Encabezado ==========
     const padX = 14;
-    const headerY = y + 10;
+    const headerY = y + 6;
 
-    // Logo + "Cardi" + obra + semana (izquierda)
+    // Logo (izquierda) — sin nombre de empresa (regla de marca: el recibo no
+    // lleva "Cardi" como encabezado, solo el isotipo)
     if (logoPath) {
       try {
-        doc.image(logoPath, x + padX, headerY, { width: 38 });
+        doc.image(logoPath, x + padX, headerY, { width: 28 });
       } catch {
         // ignorar si no puede embeder
       }
     }
     doc
-      .fontSize(13)
-      .fillColor(PRIMARY)
-      .text('Cardi', x + padX + 46, headerY + 2);
+      .fontSize(8)
+      .fillColor(MUTED)
+      .text(`Obra: ${obraLiquidacion}`, x + padX + 36, headerY + 2);
     doc
       .fontSize(8)
       .fillColor(MUTED)
-      .text(`Obra: ${obraLiquidacion}`, x + padX + 46, headerY + 20);
-    doc
-      .fontSize(8)
-      .fillColor(MUTED)
-      .text(`Semana: ${fechaSemana}`, x + padX + 46, headerY + 32);
+      .text(`Semana: ${fechaSemana}`, x + padX + 36, headerY + 14);
 
     // Nombre del beneficiario (derecha grande)
     doc
-      .fontSize(14)
+      .fontSize(13)
       .fillColor(TEXT)
       .text(item.nombreLibre, x + ancho / 2, headerY, {
         width: ancho / 2 - padX,
         align: 'right',
       });
-    const subY = headerY + 20;
+    const subY = headerY + 16;
     if (item.beneficiario?.cuitCuil) {
       doc
         .fontSize(8)
@@ -257,13 +255,13 @@ export class RecibosService {
     doc
       .fontSize(8)
       .fillColor(MUTED)
-      .text('Recibí de: Cardi', x + ancho / 2, subY + 12, {
+      .text('Recibí', x + ancho / 2, subY + 10, {
         width: ancho / 2 - padX,
         align: 'right',
       });
 
     // Separador bajo header
-    const sepY = headerY + 52;
+    const sepY = headerY + 34;
     doc
       .moveTo(x + padX, sepY)
       .lineTo(x + ancho - padX, sepY)
@@ -295,7 +293,7 @@ export class RecibosService {
       .stroke();
 
     const rowHeight = 12;
-    const pieY = y + alto - 34;
+    const pieY = y + alto - 26;
     const maxFilas = Math.floor((pieY - tablaStartY) / rowHeight) - 1;
     const filasAMostrar = Math.min(item.conceptos.length, maxFilas);
 
@@ -378,10 +376,10 @@ export class RecibosService {
       .stroke();
 
     // Firma (izquierda)
-    doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Firma:', x + padX, pieY + 10);
+    doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Firma:', x + padX, pieY + 6);
     doc
-      .moveTo(x + padX + 32, pieY + 20)
-      .lineTo(x + padX + 230, pieY + 20)
+      .moveTo(x + padX + 32, pieY + 14)
+      .lineTo(x + padX + 230, pieY + 14)
       .strokeColor('#94a3b8')
       .lineWidth(0.4)
       .stroke();
@@ -389,14 +387,14 @@ export class RecibosService {
     // Total (derecha, prominente)
     doc
       .font('Helvetica')
-      .fontSize(10)
+      .fontSize(9)
       .fillColor(MUTED)
       .text('TOTAL A PAGAR', colVal, pieY + 2, { width: 60, align: 'right' });
     doc
       .font('Helvetica-Bold')
-      .fontSize(16)
+      .fontSize(14)
       .fillColor(PRIMARY)
-      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), colMonto - 10, pieY + 14, {
+      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), colMonto - 10, pieY + 10, {
         width: colMontoW + 10,
         align: 'right',
       });
