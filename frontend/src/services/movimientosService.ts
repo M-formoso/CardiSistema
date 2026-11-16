@@ -153,4 +153,17 @@ export const movimientosService = {
     const { data } = await apiClient.post(`/movimientos/${id}/anular`, { motivo });
     return data;
   },
+  editar: async (id: string, patch: EditarMovimientoInput) => {
+    const { data } = await apiClient.patch<Movimiento>(`/movimientos/${id}`, patch);
+    return data;
+  },
+};
+
+export type EditarMovimientoInput = {
+  fecha?: string;
+  descripcion?: string | null;
+  beneficiarioId?: string | null;
+  categoriaId?: string | null;
+  obraIngresoId?: string | null;
+  imputaciones?: ImputacionInput[];
 };

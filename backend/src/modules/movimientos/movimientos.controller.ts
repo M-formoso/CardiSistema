@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -8,6 +8,7 @@ import {
   CambioMonedaDto,
   CrearEgresoDto,
   CrearIngresoDto,
+  EditarMovimientoDto,
   FiltrosMovimientoDto,
   TransferirDto,
 } from './dto/movimientos.dto';
@@ -61,5 +62,15 @@ export class MovimientosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.mov.anular(id, dto, user.id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('movimientos', 'editar')
+  editar(
+    @Param('id') id: string,
+    @Body() dto: EditarMovimientoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.mov.editar(id, dto, user.id);
   }
 }

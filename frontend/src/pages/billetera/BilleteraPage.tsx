@@ -38,6 +38,7 @@ import { CarteraChequesDialog } from './CarteraChequesDialog';
 import { NuevoChequeDialog } from './NuevoChequeDialog';
 import { GestionCuentasDialog } from './GestionCuentasDialog';
 import { MovimientoDetalleDialog } from './MovimientoDetalleDialog';
+import { MovimientoEditarDialog } from './MovimientoEditarDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
 import { Landmark, Filter } from 'lucide-react';
@@ -149,6 +150,7 @@ export function BilleteraPage() {
 
   // ---------- Acciones ----------
   const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [editarMov, setEditarMov] = useState<Movimiento | null>(null);
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['movimientos'] });
@@ -553,6 +555,15 @@ export function BilleteraPage() {
         movimientoId={detalleId}
         onClose={() => setDetalleId(null)}
         onChanged={refrescar}
+        onEditar={(mov) => {
+          setDetalleId(null);
+          setEditarMov(mov);
+        }}
+      />
+      <MovimientoEditarDialog
+        movimiento={editarMov}
+        onClose={() => setEditarMov(null)}
+        onSaved={refrescar}
       />
 
       {/* ==================== DIALOGS DE FILTROS (mobile) ==================== */}

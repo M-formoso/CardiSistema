@@ -25,6 +25,7 @@ import type {
   CambioMonedaDto,
   CrearEgresoDto,
   CrearIngresoDto,
+  EditarMovimientoDto,
   FiltrosMovimientoDto,
   TransferirDto,
 } from './dto/movimientos.dto';
@@ -511,6 +512,81 @@ export class MovimientosService {
       observacion: dto.motivo,
     });
     return { original: actualizado, reversa };
+  }
+
+  // ================= EDICIÓN =================
+
+  /**
+   * Edita campos "seguros" de un movimiento CONFIRMADO: fecha, descripción,
+   * beneficiario, categoría, obra (para ingresos) y reparto de imputaciones.
+   * NO toca monto, caja, moneda, cotización, tipo ni chequeId — si hay que
+   * corregir eso, se anula el movimiento y se vuelve a cargar.
+   *
+   * Requiere permiso `movimientos:editar` (por defecto solo ADMIN, controlado
+   * en el controller con RequirePermission).
+   */
+  async editar(id: string, dto: EditarMovimientoDto, userId: string) {
+    const original = await this.prisma.movimiento.findUnique({
+      where: { id },
+      include: { imputaciones: true },
+    });
+    if (!original) throw new NotFoundException('Movimiento no encontrado');
+    if (original.estado !== EstadoMovimiento.CONFIRMADO) {
+      throw new BadRequestException(
+        `Solo se pueden editar movimientos CONFIRMADOS (actual: ${original.estado})`,
+      );
+    }
+
+    // Si vienen imputaciones, validar que repartan exacto el monto del movimiento.
+    let imputacionesCalculadas: ReturnType<typeof repartirMonto> | undefined;
+    if (dto.imputaciones) {
+      imputacionesCalculadas = repartirMonto(Number(original.monto), dto.imputaciones);
+      await this.validarObrasActivas(imputacionesCalculadas.map((i) => i.obraId));
+    }
+
+    if (dto.obraIngresoId) {
+      const obra = await this.prisma.obra.findUnique({ where: { id: dto.obraIngresoId } });
+      if (!obra || !obra.activo) {
+        throw new BadRequestException('La obra indicada no existe o está inactiva');
+      }
+    }
+
+    const actualizado = await this.prisma.$transaction(async (tx) => {
+      if (imputacionesCalculadas) {
+        await tx.imputacion.deleteMany({ where: { movimientoId: id } });
+        await tx.imputacion.createMany({
+          data: imputacionesCalculadas.map((i) => ({
+            movimientoId: id,
+            obraId: i.obraId,
+            monto: new Prisma.Decimal(i.monto.toString()),
+            porcentaje: new Prisma.Decimal(i.porcentaje.toString()),
+          })),
+        });
+      }
+
+      const data: Prisma.MovimientoUncheckedUpdateInput = { updatedById: userId };
+      if (dto.fecha !== undefined) data.fecha = dto.fecha;
+      if (dto.descripcion !== undefined) data.descripcion = dto.descripcion;
+      if (dto.beneficiarioId !== undefined) data.beneficiarioId = dto.beneficiarioId;
+      if (dto.categoriaId !== undefined) data.categoriaId = dto.categoriaId;
+      if (dto.obraIngresoId !== undefined) data.obraIngresoId = dto.obraIngresoId;
+
+      return tx.movimiento.update({
+        where: { id },
+        data,
+        include: { imputaciones: { include: { obra: true } } },
+      });
+    });
+
+    void this.audit.registrar({
+      usuarioId: userId,
+      accion: 'ACTUALIZAR',
+      entidad: 'Movimiento',
+      entidadId: id,
+      antes: original as unknown,
+      despues: actualizado as unknown,
+    });
+    return actualizado;
   }
 
   // ================= HELPERS =================

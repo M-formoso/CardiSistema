@@ -77,6 +77,34 @@ export const AnularMovimientoSchema = z.object({
 });
 export class AnularMovimientoDto extends createZodDto(AnularMovimientoSchema) {}
 
+/**
+ * Campos editables de un movimiento CONFIRMADO. Lo que NO está acá es
+ * intencionalmente no editable (monto, caja, moneda, cotización, tipo,
+ * chequeId: cambian saldos o rompen vínculos — si hay que corregir eso,
+ * se anula y se rehace).
+ */
+export const EditarMovimientoSchema = z
+  .object({
+    fecha: z.coerce.date().optional(),
+    descripcion: z.string().max(1000).nullable().optional(),
+    beneficiarioId: z.string().uuid().nullable().optional(),
+    categoriaId: z.string().uuid().nullable().optional(),
+    obraIngresoId: z.string().uuid().nullable().optional(),
+    // Para egresos: si viene, reemplaza el reparto por obra existente.
+    imputaciones: z.array(ImputacionInputSchema).min(1).optional(),
+  })
+  .refine(
+    (v) =>
+      v.fecha !== undefined ||
+      v.descripcion !== undefined ||
+      v.beneficiarioId !== undefined ||
+      v.categoriaId !== undefined ||
+      v.obraIngresoId !== undefined ||
+      v.imputaciones !== undefined,
+    { message: 'No hay nada para editar' },
+  );
+export class EditarMovimientoDto extends createZodDto(EditarMovimientoSchema) {}
+
 export const FiltrosMovimientoSchema = z.object({
   cajaId: z.string().uuid().optional(),
   tipo: z.enum(['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'CAMBIO_MONEDA', 'AJUSTE']).optional(),

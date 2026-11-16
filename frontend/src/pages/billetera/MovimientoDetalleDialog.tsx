@@ -48,10 +48,12 @@ export function MovimientoDetalleDialog({
   movimientoId,
   onClose,
   onChanged,
+  onEditar,
 }: {
   movimientoId: string | null;
   onClose: () => void;
   onChanged: () => void;
+  onEditar?: (mov: Movimiento) => void;
 }) {
   const open = movimientoId !== null;
   const qc = useQueryClient();
@@ -255,14 +257,18 @@ export function MovimientoDetalleDialog({
         <DialogFooter className="gap-2">
           {mov?.estado === 'CONFIRMADO' && !modoAnular && (
             <>
-              <Button
-                variant="outline"
-                disabled
-                title="Próximamente — por ahora anulá y volvé a cargar"
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                Editar
-              </Button>
+              {onEditar && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    onEditar(mov);
+                    handleClose();
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Editar
+                </Button>
+              )}
               <Button variant="danger" onClick={() => setModoAnular(true)}>
                 <XCircle className="h-4 w-4 mr-1" />
                 Anular
