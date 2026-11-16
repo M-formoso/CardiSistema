@@ -315,22 +315,30 @@ export function BilleteraPage() {
           <BigStatCard
             titulo="Saldos"
             subtitulo={cajaId ? cajas.find((c) => c.id === cajaId)?.nombre ?? '' : 'Todas las cajas'}
-            items={[
-              {
-                label: 'ARS',
-                simbolo: '$',
-                value: totales.saldoArs,
-                color: totales.saldoArs < 0 ? 'text-red-300' : 'text-white',
-                icon: <Wallet className="h-3 w-3" />,
-              },
-              {
-                label: 'USD',
-                simbolo: 'US$',
-                value: totales.saldoUsd,
-                color: totales.saldoUsd < 0 ? 'text-red-300' : 'text-white',
-                icon: <Wallet className="h-3 w-3" />,
-              },
-            ]}
+            items={(() => {
+              const monedaEfectiva: 'ARS' | 'USD' | undefined =
+                monedaCajaSel ?? (moneda !== 'TODAS' ? moneda : undefined);
+              const items = [];
+              if (!monedaEfectiva || monedaEfectiva === 'ARS') {
+                items.push({
+                  label: 'ARS',
+                  simbolo: '$',
+                  value: totales.saldoArs,
+                  color: totales.saldoArs < 0 ? 'text-red-300' : 'text-white',
+                  icon: <Wallet className="h-3 w-3" />,
+                });
+              }
+              if (!monedaEfectiva || monedaEfectiva === 'USD') {
+                items.push({
+                  label: 'USD',
+                  simbolo: 'US$',
+                  value: totales.saldoUsd,
+                  color: totales.saldoUsd < 0 ? 'text-red-300' : 'text-white',
+                  icon: <Wallet className="h-3 w-3" />,
+                });
+              }
+              return items;
+            })()}
           />
           <BigStatCard
             titulo={`Movimientos · ${rangoLabel(desde, hasta)}`}
@@ -836,7 +844,7 @@ function BigStatCard({
         </div>
         {subtitulo && <div className="text-[11px] text-white/40 truncate ml-2">{subtitulo}</div>}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className={`grid gap-4 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {items.map((it, i) => {
           const nfmt = it.value.toLocaleString('es-AR', {
             minimumFractionDigits: 2,
