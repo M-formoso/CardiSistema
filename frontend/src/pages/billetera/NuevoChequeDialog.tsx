@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -21,9 +21,11 @@ import {
 import { beneficiariosService } from '@/services/beneficiariosService';
 import { cajasService } from '@/services/cajasService';
 import { obrasService } from '@/services/obrasService';
+import { cn } from '@/lib/utils';
 
-// Bancos argentinos más usados. El input es un datalist → el usuario puede
-// elegir uno o tipear otro libre.
+// Bancos argentinos más usados. El input tiene autocompletado: las sugerencias
+// aparecen SOLO cuando el usuario empieza a tipear (no hay chevron ni lista
+// desplegable al hacer click). Si no hay match, se acepta el texto libre.
 const BANCOS_AR = [
   'Nación', 'Provincia', 'Ciudad', 'Galicia', 'Santander', 'BBVA',
   'Macro', 'Patagonia', 'Credicoop', 'Comafi', 'HSBC', 'Supervielle',
@@ -155,18 +157,7 @@ export function NuevoChequeDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Banco</Label>
-              <Input
-                list="bancos-ar"
-                value={banco}
-                onChange={(e) => setBanco(e.target.value)}
-                placeholder="Elegí o tipeá…"
-                autoComplete="off"
-              />
-              <datalist id="bancos-ar">
-                {BANCOS_AR.map((b) => (
-                  <option key={b} value={b} />
-                ))}
-              </datalist>
+              <BankInput value={banco} onChange={setBanco} options={BANCOS_AR} />
             </div>
             <div className="space-y-2">
               <Label>Titular / Librador</Label>
@@ -286,5 +277,99 @@ export function NuevoChequeDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Input con autocompletado inline. Se comporta como un input normal (sin
+ * chevron, sin dropdown al click), pero muestra sugerencias debajo solo
+ * cuando el usuario tipea algo que matchea con la lista. Acepta texto
+ * libre: si el usuario escribe algo que no está en la lista, se guarda igual.
+ * Navegable con ↑ ↓ Enter Esc.
+ */
+function BankInput({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const [focused, setFocused] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const matches = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    if (!q) return [];
+    return options
+      .filter((o) => o.toLowerCase().includes(q) && o.toLowerCase() !== q)
+      .slice(0, 8);
+  }, [value, options]);
+
+  const show = focused && matches.length > 0;
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setHighlight(0);
+        }}
+        onFocus={() => {
+          if (blurTimer.current) clearTimeout(blurTimer.current);
+          setFocused(true);
+        }}
+        onBlur={() => {
+          // Pequeño delay para que el click en la sugerencia se registre
+          blurTimer.current = setTimeout(() => setFocused(false), 150);
+        }}
+        onKeyDown={(e) => {
+          if (!show) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlight((h) => Math.min(h + 1, matches.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlight((h) => Math.max(h - 1, 0));
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const chosen = matches[highlight];
+            if (chosen) {
+              onChange(chosen);
+              setFocused(false);
+            }
+          } else if (e.key === 'Escape') {
+            setFocused(false);
+          }
+        }}
+        placeholder="Tipeá el banco…"
+        autoComplete="off"
+      />
+      {show && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-md shadow-xl max-h-60 overflow-y-auto">
+          {matches.map((m, i) => (
+            <button
+              key={m}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(m);
+                setFocused(false);
+              }}
+              onMouseEnter={() => setHighlight(i)}
+              className={cn(
+                'w-full text-left px-3 py-2 text-sm transition-colors',
+                i === highlight ? 'bg-primary/10 text-primary' : 'hover:bg-muted/5',
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
