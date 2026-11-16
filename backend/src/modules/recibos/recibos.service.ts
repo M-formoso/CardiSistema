@@ -216,23 +216,19 @@ export class RecibosService {
     const padX = 14;
     const headerY = y + 6;
 
-    // Logo (izquierda) — sin nombre de empresa (regla de marca: el recibo no
-    // lleva "Cardi" como encabezado, solo el isotipo)
-    if (logoPath) {
-      try {
-        doc.image(logoPath, x + padX, headerY, { width: 28 });
-      } catch {
-        // ignorar si no puede embeder
-      }
-    }
+    // Logo deshabilitado por ahora: el logo oficial incluye el texto "CARDI"
+    // como parte de la imagen, y la regla de marca pide que el recibo no
+    // nombre a la empresa. Cuando llegue una versión isotipo-only (solo la
+    // gota), se restaura con doc.image(logoPath, x + padX, headerY, { width: 28 }).
+    void logoPath;
     doc
       .fontSize(8)
       .fillColor(MUTED)
-      .text(`Obra: ${obraLiquidacion}`, x + padX + 36, headerY + 2);
+      .text(`Obra: ${obraLiquidacion}`, x + padX, headerY + 2);
     doc
       .fontSize(8)
       .fillColor(MUTED)
-      .text(`Semana: ${fechaSemana}`, x + padX + 36, headerY + 14);
+      .text(`Semana: ${fechaSemana}`, x + padX, headerY + 14);
 
     // Nombre del beneficiario (derecha grande)
     doc
