@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,19 @@ export function NuevoChequeDialog({
   const cajasCheques = useMemo(
     () => cajas.filter((c) => c.tipo === 'CHEQUES_TERCEROS' && c.moneda === moneda),
     [cajas, moneda],
+  );
+
+  const benesOpts = useMemo<ComboboxOption[]>(
+    () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
+    [benes],
+  );
+  const cajasChequesOpts = useMemo<ComboboxOption[]>(
+    () => cajasCheques.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda })),
+    [cajasCheques],
+  );
+  const obrasOpts = useMemo<ComboboxOption[]>(
+    () => obras.map((o) => ({ value: o.id, label: o.nombre })),
+    [obras],
   );
 
   const m = useMutation({
@@ -210,14 +224,14 @@ export function NuevoChequeDialog({
           </div>
           <div className="space-y-2">
             <Label>Beneficiario (opcional)</Label>
-            <Select value={beneficiarioId} onChange={(e) => setBeneficiarioId(e.target.value)}>
-              <option value="">Sin asignar</option>
-              {benes.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.nombre} · {b.tipo}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              options={benesOpts}
+              value={beneficiarioId}
+              onChange={setBeneficiarioId}
+              placeholder="Sin asignar"
+              searchPlaceholder="Buscar beneficiario…"
+              allLabel="Sin asignar"
+            />
           </div>
 
           {tipo === 'TERCERO' && (
@@ -233,18 +247,13 @@ export function NuevoChequeDialog({
               {cajasCheques.length > 1 && (
                 <div className="space-y-2">
                   <Label>Caja destino *</Label>
-                  <Select
+                  <Combobox
+                    options={cajasChequesOpts}
                     value={cajaIngresoId}
-                    onChange={(e) => setCajaIngresoId(e.target.value)}
-                    required
-                  >
-                    <option value="">Elegí…</option>
-                    {cajasCheques.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={setCajaIngresoId}
+                    placeholder="Elegí caja…"
+                    searchPlaceholder="Buscar…"
+                  />
                 </div>
               )}
               {cajasCheques.length === 1 && (
@@ -255,14 +264,14 @@ export function NuevoChequeDialog({
               )}
               <div className="space-y-2">
                 <Label>Obra (opcional)</Label>
-                <Select value={obraIngresoId} onChange={(e) => setObraIngresoId(e.target.value)}>
-                  <option value="">Sin imputar a obra</option>
-                  {obras.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.nombre}
-                    </option>
-                  ))}
-                </Select>
+                <Combobox
+                  options={obrasOpts}
+                  value={obraIngresoId}
+                  onChange={setObraIngresoId}
+                  placeholder="Sin imputar a obra"
+                  searchPlaceholder="Buscar obra…"
+                  allLabel="Sin imputar a obra"
+                />
               </div>
             </div>
           )}

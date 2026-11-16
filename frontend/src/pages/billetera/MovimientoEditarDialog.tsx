@@ -5,7 +5,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -85,6 +85,19 @@ export function MovimientoEditarDialog({
     queryKey: ['obras', { activo: true }],
     queryFn: () => obrasService.list({ activo: true }),
   });
+
+  const benesOpts = useMemo<ComboboxOption[]>(
+    () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
+    [benes],
+  );
+  const categoriasOpts = useMemo<ComboboxOption[]>(
+    () => categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo })),
+    [categorias],
+  );
+  const obrasOpts = useMemo<ComboboxOption[]>(
+    () => obras.map((o) => ({ value: o.id, label: o.nombre })),
+    [obras],
+  );
 
   const esEgresoConImputaciones = movimiento?.tipo === 'EGRESO';
   const esIngreso = movimiento?.tipo === 'INGRESO';
@@ -172,46 +185,40 @@ export function MovimientoEditarDialog({
                 <Label>
                   {esIngreso ? 'Origen (quién envía)' : 'Beneficiario'}
                 </Label>
-                <Select
+                <Combobox
+                  options={benesOpts}
                   value={beneficiarioId}
-                  onChange={(e) => setBeneficiarioId(e.target.value)}
-                >
-                  <option value="">Sin asignar</option>
-                  {benes.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nombre} · {b.tipo}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setBeneficiarioId}
+                  placeholder="Sin asignar"
+                  searchPlaceholder="Buscar…"
+                  allLabel="Sin asignar"
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Categoría</Label>
-              <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-                <option value="">Sin categoría</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo} · {c.nombre}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={categoriasOpts}
+                value={categoriaId}
+                onChange={setCategoriaId}
+                placeholder="Sin categoría"
+                searchPlaceholder="Buscar…"
+                allLabel="Sin categoría"
+              />
             </div>
 
             {esIngreso && (
               <div className="space-y-2">
                 <Label>Obra (opcional)</Label>
-                <Select
+                <Combobox
+                  options={obrasOpts}
                   value={obraIngresoId}
-                  onChange={(e) => setObraIngresoId(e.target.value)}
-                >
-                  <option value="">Sin imputar a obra</option>
-                  {obras.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.nombre}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setObraIngresoId}
+                  placeholder="Sin imputar a obra"
+                  searchPlaceholder="Buscar obra…"
+                  allLabel="Sin imputar a obra"
+                />
               </div>
             )}
 
@@ -241,21 +248,17 @@ export function MovimientoEditarDialog({
                 <div className="space-y-2">
                   {lineas.map((l, idx) => (
                     <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
-                      <Select
+                      <Combobox
+                        options={obrasOpts}
                         value={l.obraId}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setLineas((prev) =>
-                            prev.map((x, i) => (i === idx ? { ...x, obraId: e.target.value } : x)),
+                            prev.map((x, i) => (i === idx ? { ...x, obraId: v } : x)),
                           )
                         }
-                      >
-                        <option value="">Elegí obra…</option>
-                        {obras.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.nombre}
-                          </option>
-                        ))}
-                      </Select>
+                        placeholder="Elegí obra…"
+                        searchPlaceholder="Buscar obra…"
+                      />
                       <Input
                         type="number"
                         step="0.01"

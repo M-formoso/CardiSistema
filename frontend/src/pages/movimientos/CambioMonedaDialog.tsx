@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,16 @@ export function CambioMonedaDialog({
   const destino = cajas.find((c) => c.id === destinoId);
   const destinosPosibles = cajas.filter(
     (c) => c.id !== origenId && origen && c.moneda !== origen.moneda,
+  );
+
+  const origenOpts = useMemo<ComboboxOption[]>(
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre, hint: `${c.moneda} · ${c.tipo}` })),
+    [cajas],
+  );
+  const destinoOpts = useMemo<ComboboxOption[]>(
+    () =>
+      destinosPosibles.map((c) => ({ value: c.id, label: c.nombre, hint: `${c.moneda} · ${c.tipo}` })),
+    [destinosPosibles],
   );
 
   // Cálculo del monto destino según dirección
@@ -118,31 +128,32 @@ export function CambioMonedaDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Caja origen *</Label>
-              <Select
+              <Combobox
+                options={origenOpts}
                 value={origenId}
-                onChange={(e) => {
-                  setOrigenId(e.target.value);
+                onChange={(v) => {
+                  setOrigenId(v);
                   setDestinoId('');
                 }}
-              >
-                <option value="">Elegí…</option>
-                {cajas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.moneda})
-                  </option>
-                ))}
-              </Select>
+                placeholder="Elegí caja…"
+                searchPlaceholder="Buscar caja…"
+              />
             </div>
             <div className="space-y-2">
               <Label>Caja destino *</Label>
-              <Select value={destinoId} onChange={(e) => setDestinoId(e.target.value)} disabled={!origenId}>
-                <option value="">Elegí…</option>
-                {destinosPosibles.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.moneda})
-                  </option>
-                ))}
-              </Select>
+              {origenId ? (
+                <Combobox
+                  options={destinoOpts}
+                  value={destinoId}
+                  onChange={setDestinoId}
+                  placeholder="Elegí caja…"
+                  searchPlaceholder="Buscar caja…"
+                />
+              ) : (
+                <div className="h-10 flex items-center px-3 rounded-md border border-border bg-muted/5 text-sm text-muted">
+                  Elegí la caja origen primero
+                </div>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">

@@ -5,7 +5,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -42,6 +42,11 @@ export function CargarResumenDialog({
     queryKey: ['obras', { activo: true }],
     queryFn: () => obrasService.list({ activo: true }),
   });
+
+  const obrasOpts = useMemo<ComboboxOption[]>(
+    () => obras.map((o) => ({ value: o.id, label: o.nombre })),
+    [obras],
+  );
 
   const totalNum = useMemo(
     () => lineas.reduce((acc, l) => acc + (Number(l.monto) || 0), 0),
@@ -135,21 +140,17 @@ export function CargarResumenDialog({
             <div className="space-y-2">
               {lineas.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-[1fr_160px_auto] gap-2 items-center">
-                  <Select
+                  <Combobox
+                    options={obrasOpts}
                     value={l.obraId}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setLineas((prev) =>
-                        prev.map((x, i) => (i === idx ? { ...x, obraId: e.target.value } : x)),
+                        prev.map((x, i) => (i === idx ? { ...x, obraId: v } : x)),
                       )
                     }
-                  >
-                    <option value="">Elegí obra…</option>
-                    {obras.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.nombre}
-                      </option>
-                    ))}
-                  </Select>
+                    placeholder="Elegí obra…"
+                    searchPlaceholder="Buscar obra…"
+                  />
                   <Input
                     type="number"
                     step="0.01"

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -58,6 +59,23 @@ export function NuevoIngresoDialog({
   const cajaSel = cajas.find((c) => c.id === cajaId);
   const moneda = cajaSel?.moneda ?? 'ARS';
 
+  const cajasOpts = useMemo<ComboboxOption[]>(
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre, hint: `${c.moneda} · ${c.tipo}` })),
+    [cajas],
+  );
+  const benesOpts = useMemo<ComboboxOption[]>(
+    () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
+    [benes],
+  );
+  const obrasOpts = useMemo<ComboboxOption[]>(
+    () => obras.map((o) => ({ value: o.id, label: o.nombre })),
+    [obras],
+  );
+  const categoriasOpts = useMemo<ComboboxOption[]>(
+    () => categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo })),
+    [categorias],
+  );
+
   const m = useMutation({
     mutationFn: () =>
       movimientosService.crearIngreso({
@@ -108,14 +126,13 @@ export function NuevoIngresoDialog({
             </div>
             <div className="space-y-2">
               <Label>Caja *</Label>
-              <Select value={cajaId} onChange={(e) => setCajaId(e.target.value)} required>
-                <option value="">Elegí…</option>
-                {cajas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.moneda})
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={cajasOpts}
+                value={cajaId}
+                onChange={setCajaId}
+                placeholder="Elegí caja…"
+                searchPlaceholder="Buscar caja…"
+              />
             </div>
             <div className="space-y-2">
               <Label>Medio *</Label>
@@ -144,39 +161,39 @@ export function NuevoIngresoDialog({
             </div>
             <div className="space-y-2">
               <Label>Origen (quién envía)</Label>
-              <Select value={beneficiarioId} onChange={(e) => setBeneficiarioId(e.target.value)}>
-                <option value="">Sin origen</option>
-                {benes.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nombre} · {b.tipo}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={benesOpts}
+                value={beneficiarioId}
+                onChange={setBeneficiarioId}
+                placeholder="Sin origen"
+                searchPlaceholder="Buscar…"
+                allLabel="Sin origen"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Obra / Proyecto</Label>
-              <Select value={obraIngresoId} onChange={(e) => setObraIngresoId(e.target.value)}>
-                <option value="">Sin obra</option>
-                {obras.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={obrasOpts}
+                value={obraIngresoId}
+                onChange={setObraIngresoId}
+                placeholder="Sin obra"
+                searchPlaceholder="Buscar obra…"
+                allLabel="Sin obra"
+              />
             </div>
             <div className="space-y-2">
               <Label>Categoría</Label>
-              <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-                <option value="">Sin categoría</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo} · {c.nombre}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={categoriasOpts}
+                value={categoriaId}
+                onChange={setCategoriaId}
+                placeholder="Sin categoría"
+                searchPlaceholder="Buscar…"
+                allLabel="Sin categoría"
+              />
             </div>
           </div>
 
