@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -14,7 +13,6 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
-  XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +37,7 @@ import { CambioMonedaDialog } from '@/pages/movimientos/CambioMonedaDialog';
 import { CarteraChequesDialog } from './CarteraChequesDialog';
 import { NuevoChequeDialog } from './NuevoChequeDialog';
 import { GestionCuentasDialog } from './GestionCuentasDialog';
+import { MovimientoDetalleDialog } from './MovimientoDetalleDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
 import { Landmark, Filter } from 'lucide-react';
@@ -149,19 +148,7 @@ export function BilleteraPage() {
   const monedaCajaSel = cajas.find((c) => c.id === cajaId)?.moneda;
 
   // ---------- Acciones ----------
-  const anularMut = useMutation({
-    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
-      movimientosService.anular(id, motivo),
-    onSuccess: () => {
-      toast.success('Movimiento anulado (reversa generada)');
-      refrescar();
-    },
-    onError: (e) =>
-      toast.error(
-        (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
-          'No se pudo anular',
-      ),
-  });
+  const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['movimientos'] });
@@ -464,14 +451,13 @@ export function BilleteraPage() {
                 <TableHead>Categoría</TableHead>
                 <TableHead>Beneficiario</TableHead>
                 <TableHead>Descripción</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="pr-4 sm:pr-6 lg:pr-8"></TableHead>
+                <TableHead className="pr-4 sm:pr-6 lg:pr-8">Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingMovs && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted py-8">
+                  <TableCell colSpan={10} className="text-center text-muted py-8">
                     <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                     Cargando…
                   </TableCell>
@@ -479,7 +465,7 @@ export function BilleteraPage() {
               )}
               {!loadingMovs && listado?.data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted py-8">
+                  <TableCell colSpan={10} className="text-center text-muted py-8">
                     Sin movimientos en el período. Ampliá las fechas o cargá el primero arriba.
                   </TableCell>
                 </TableRow>
@@ -488,11 +474,7 @@ export function BilleteraPage() {
                 <MovimientoRow
                   key={m.id}
                   m={m}
-                  onAnular={() => {
-                    const motivo = prompt('Motivo de la anulación:');
-                    if (motivo && motivo.trim().length >= 3)
-                      anularMut.mutate({ id: m.id, motivo: motivo.trim() });
-                  }}
+                  onDetalle={() => setDetalleId(m.id)}
                 />
               ))}
             </TableBody>
@@ -566,6 +548,12 @@ export function BilleteraPage() {
       />
       {openCartera && <CarteraChequesDialog onClose={() => setOpenCartera(false)} />}
       {openCuentas && <GestionCuentasDialog onClose={() => setOpenCuentas(false)} />}
+
+      <MovimientoDetalleDialog
+        movimientoId={detalleId}
+        onClose={() => setDetalleId(null)}
+        onChanged={refrescar}
+      />
 
       {/* ==================== DIALOGS DE FILTROS (mobile) ==================== */}
       {openFiltrosMobile && (
@@ -767,13 +755,13 @@ function FiltrosMovimientosMobile({
 // Sub-componentes
 // ======================================================================
 
-function MovimientoRow({ m, onAnular }: { m: Movimiento; onAnular: () => void }) {
+function MovimientoRow({ m, onDetalle }: { m: Movimiento; onDetalle: () => void }) {
   const obras =
     m.imputaciones?.length
       ? m.imputaciones.map((i) => i.obra.nombre).join(', ')
       : null;
   return (
-    <TableRow>
+    <TableRow onClick={onDetalle} className="cursor-pointer hover:bg-muted/5 transition-colors">
       <TableCell className="num">{formatearFecha(m.fecha)}</TableCell>
       <TableCell>
         <Badge
@@ -807,13 +795,6 @@ function MovimientoRow({ m, onAnular }: { m: Movimiento; onAnular: () => void })
       </TableCell>
       <TableCell>
         <Badge variant={ESTADO_VARIANTE[m.estado]}>{m.estado}</Badge>
-      </TableCell>
-      <TableCell>
-        {m.estado === 'CONFIRMADO' && (
-          <Button variant="ghost" size="icon" onClick={onAnular} title="Anular">
-            <XCircle className="h-4 w-4" />
-          </Button>
-        )}
       </TableCell>
     </TableRow>
   );

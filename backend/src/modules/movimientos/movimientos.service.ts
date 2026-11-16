@@ -97,8 +97,11 @@ export class MovimientosService {
         beneficiario: true,
         categoria: true,
         imputaciones: { include: { obra: true } },
+        obraIngreso: { select: { id: true, nombre: true } },
         cheque: true,
         recibo: true,
+        createdBy: { select: { nombre: true } },
+        anuladoPor: { select: { nombre: true } },
       },
     });
     if (!mov) throw new NotFoundException('Movimiento no encontrado');

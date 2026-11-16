@@ -20,18 +20,44 @@ export type Movimiento = {
   medioPago: MedioPago;
   descripcion?: string | null;
   cotizacion: string;
+  cotizacionTipo?: string;
   montoArs: string;
   montoUsd: string;
   beneficiarioId?: string | null;
   categoriaId?: string | null;
+  obraIngresoId?: string | null;
+  chequeId?: string | null;
   estado: EstadoMovimiento;
   grupoId?: string | null;
   motivoAnulacion?: string | null;
+  anuladoAt?: string | null;
   createdAt: string;
-  caja?: { nombre: string; moneda: string };
-  beneficiario?: { nombre: string } | null;
-  categoria?: { nombre: string } | null;
-  imputaciones?: Array<{ obraId: string; monto: string; porcentaje: string; obra: { nombre: string } }>;
+  updatedAt?: string;
+  // Relaciones (vienen en findOne y listados)
+  caja?: { nombre: string; moneda: string; tipo?: string };
+  beneficiario?: { nombre: string; tipo?: string } | null;
+  categoria?: { nombre: string; codigo?: string } | null;
+  imputaciones?: Array<{
+    obraId: string;
+    monto: string;
+    porcentaje: string;
+    obra: { nombre: string };
+  }>;
+  obraIngreso?: { id: string; nombre: string } | null;
+  cheque?: {
+    id: string;
+    tipo: 'PROPIO' | 'TERCERO';
+    numero: string;
+    banco?: string | null;
+    librador?: string | null;
+    titular?: string | null;
+    fechaPago: string;
+    estado: string;
+    moneda: 'ARS' | 'USD';
+    monto: string;
+  } | null;
+  createdBy?: { nombre: string } | null;
+  anuladoPor?: { nombre: string } | null;
 };
 
 export type ListadoMovimientos = {
