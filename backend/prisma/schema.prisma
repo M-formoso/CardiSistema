@@ -260,6 +260,8 @@ model Usuario {
   certificacionesActualizadas Certificacion[]           @relation("CertActualizadaPor")
   recibosGenerados            Recibo[]                  @relation("ReciboGeneradoPor")
   migracionLotesCreados       MigracionLote[]           @relation("LoteCreadoPor")
+  resumenesProveedorCreados      ProveedorResumen[]     @relation("ResumenProveedorCreadoPor")
+  resumenesProveedorActualizados ProveedorResumen[]     @relation("ResumenProveedorActualizadoPor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -365,6 +367,7 @@ model Obra {
   contratosCuotas         ContratoCuota[]
   vencimientos            VencimientoRecurrente[]
   compromisos             CompromisoPago[]
+  resumenItemsProveedores ProveedorResumenItem[]
 
   createdById String?
   updatedById String?
@@ -403,6 +406,7 @@ model Beneficiario {
   recibos           Recibo[]
   vacaciones        Vacacion[]
   prestamosEmpleado PrestamoEmpleado[]
+  resumenesCtaCte   ProveedorResumen[]
 
   createdById String?
   updatedById String?
@@ -592,6 +596,49 @@ model PrestamoAplicacion {
 
   @@index([prestamoId])
   @@index([liquidacionItemId])
+}
+
+// =============================================================
+// PROVEEDORES Y CUENTA CORRIENTE
+// =============================================================
+
+/// Foto del estado de cuenta de un proveedor en una fecha. La manda el
+/// proveedor cada tanto (no se actualiza todos los días). Se usa para
+/// calcular el saldo = resumen - pagos posteriores (total y por obra).
+model ProveedorResumen {
+  id            String   @id @default(uuid())
+  proveedorId   String // Beneficiario tipo PROVEEDOR
+  fecha         DateTime @db.Date
+  montoTotal    Decimal  @db.Decimal(14, 2)
+  observaciones String?
+
+  proveedor Beneficiario           @relation(fields: [proveedorId], references: [id])
+  items     ProveedorResumenItem[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("ResumenProveedorCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("ResumenProveedorActualizadoPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([proveedorId, fecha])
+  @@index([proveedorId, fecha])
+}
+
+/// Línea del resumen: monto adeudado por obra a la fecha del resumen.
+model ProveedorResumenItem {
+  id        String  @id @default(uuid())
+  resumenId String
+  obraId    String
+  monto     Decimal @db.Decimal(14, 2)
+
+  resumen ProveedorResumen @relation(fields: [resumenId], references: [id], onDelete: Cascade)
+  obra    Obra             @relation(fields: [obraId], references: [id])
+
+  @@unique([resumenId, obraId])
+  @@index([obraId])
 }
 
 /// Nombres libres y apodos que aparecen en las planillas → beneficiario.

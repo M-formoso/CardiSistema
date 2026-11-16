@@ -26,6 +26,7 @@ import { LiquidacionesModule } from './modules/liquidaciones/liquidaciones.modul
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
 import { ObrasModule } from './modules/obras/obras.module';
 import { PrestamosEmpleadosModule } from './modules/prestamos-empleados/prestamos-empleados.module';
+import { ProveedoresModule } from './modules/proveedores/proveedores.module';
 import { RecibosModule } from './modules/recibos/recibos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
@@ -71,6 +72,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     CertificacionesModule,
     ContratosCuotasModule,
     CompromisosModule,
+    ProveedoresModule,
     // Reportes
     ReportesModule,
     // Administración
