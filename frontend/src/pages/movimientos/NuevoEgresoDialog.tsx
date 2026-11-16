@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
@@ -25,16 +25,28 @@ import { formatearFecha, formatearMonto } from '@/lib/formatters';
 
 type Linea = { obraId: string; monto: string };
 
+export type ImputacionSugerida = {
+  obraId: string;
+  nombre?: string;
+  saldoPendiente: number;
+};
+
 /**
  * Formulario de egreso con imputación a 1..N obras.
  * Si hay una sola línea, el monto se autocompleta con el total.
  * Si hay más, la suma tiene que coincidir con el total (validado al enviar).
+ *
+ * Usado también desde "Pago a proveedor" en el detalle de un proveedor. En
+ * ese flujo se oculta la categoría y se pre-llenan las imputaciones con las
+ * obras que tienen saldo pendiente según el último resumen cargado.
  */
 export function NuevoEgresoDialog({
   open,
   onOpenChange,
   onCreated,
   beneficiarioInicialId,
+  ocultarCategoria,
+  imputacionesSugeridas,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -42,6 +54,13 @@ export function NuevoEgresoDialog({
   /** Si viene, el beneficiario arranca pre-seleccionado (útil para pagar
    * desde la pantalla de un proveedor). El usuario puede cambiarlo igual. */
   beneficiarioInicialId?: string;
+  /** Para pago a proveedor: la categoría no aplica (ya se sabe a quién se
+   * paga), se oculta la sección entera. */
+  ocultarCategoria?: boolean;
+  /** Para pago a proveedor: arrancar con las obras que tienen saldo
+   * pendiente, con montos en 0 editables. El usuario ingresa cuánto le
+   * paga a cada una (puede dejar menos, igual o más que el saldo). */
+  imputacionesSugeridas?: ImputacionSugerida[];
 }) {
   const qc = useQueryClient();
   const [nuevaCatOpen, setNuevaCatOpen] = useState(false);
@@ -52,7 +71,11 @@ export function NuevoEgresoDialog({
   const [beneficiarioId, setBeneficiarioId] = useState(beneficiarioInicialId ?? '');
   const [categoriaId, setCategoriaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [lineas, setLineas] = useState<Linea[]>([{ obraId: '', monto: '' }]);
+  const [lineas, setLineas] = useState<Linea[]>(
+    imputacionesSugeridas && imputacionesSugeridas.length > 0
+      ? imputacionesSugeridas.map((s) => ({ obraId: s.obraId, monto: '' }))
+      : [{ obraId: '', monto: '' }],
+  );
   const [chequeId, setChequeId] = useState('');
 
   const { data: cajas = [] } = useQuery({
@@ -100,18 +123,63 @@ export function NuevoEgresoDialog({
     ? benes.filter((b) => b.tipo === 'EMPLEADO')
     : benes;
 
+  // En modo "pago a proveedor" (hay imputaciones sugeridas) el total del
+  // egreso se calcula automáticamente como la suma de las líneas con monto >0,
+  // excepto que haya un cheque (el cheque fija el total). En modo normal, el
+  // usuario pone el total y después reparte.
+  const esPagoProveedor = !!imputacionesSugeridas && imputacionesSugeridas.length > 0;
+  useEffect(() => {
+    if (!esPagoProveedor || modoCheque) return;
+    const sum = lineas.reduce((acc, l) => acc + (Number(l.monto) || 0), 0);
+    setMonto(sum > 0 ? sum.toFixed(2) : '');
+  }, [lineas, esPagoProveedor, modoCheque]);
+
   const puedeEnviar = useMemo(() => {
     if (!cajaId || totalNum <= 0) return false;
     if (prestamoRequiereEmpleado) return false;
     if (modoCheque && !chequeId) return false;
+
+    // En modo proveedor, se aceptan líneas con monto 0 (= obras que no se
+    // pagan esta vez). Al menos una línea con monto > 0 y obra, y la suma
+    // tiene que cerrar con el total.
+    if (esPagoProveedor) {
+      const conMonto = lineas.filter((l) => l.obraId && Number(l.monto) > 0);
+      if (conMonto.length === 0) return false;
+      return Math.abs(diferencia) < 0.01;
+    }
+
     if (lineas.length === 1) return !!lineas[0].obraId;
     if (lineas.some((l) => !l.obraId || !l.monto)) return false;
     return Math.abs(diferencia) < 0.01;
-  }, [cajaId, totalNum, lineas, diferencia, prestamoRequiereEmpleado, modoCheque, chequeId]);
+  }, [
+    cajaId,
+    totalNum,
+    lineas,
+    diferencia,
+    prestamoRequiereEmpleado,
+    modoCheque,
+    chequeId,
+    esPagoProveedor,
+  ]);
 
   const m = useMutation({
-    mutationFn: () =>
-      movimientosService.crearEgreso({
+    mutationFn: () => {
+      // Para enviar: en modo proveedor se filtran las líneas con monto 0
+      // (obras que no se pagan ahora). En modo normal, se mandan todas.
+      let imputaciones: Array<{ obraId: string; monto: number }>;
+      if (esPagoProveedor) {
+        imputaciones = lineas
+          .filter((l) => l.obraId && Number(l.monto) > 0)
+          .map((l) => ({ obraId: l.obraId, monto: Number(l.monto) }));
+      } else if (lineas.length === 1) {
+        imputaciones = [{ obraId: lineas[0].obraId, monto: totalNum }];
+      } else {
+        imputaciones = lineas.map((l) => ({
+          obraId: l.obraId,
+          monto: Number(l.monto),
+        }));
+      }
+      return movimientosService.crearEgreso({
         fecha,
         cajaId,
         monto: totalNum,
@@ -120,11 +188,9 @@ export function NuevoEgresoDialog({
         categoriaId: categoriaId || undefined,
         descripcion: descripcion.trim() || undefined,
         chequeId: chequeId || undefined,
-        imputaciones:
-          lineas.length === 1
-            ? [{ obraId: lineas[0].obraId, monto: totalNum }]
-            : lineas.map((l) => ({ obraId: l.obraId, monto: Number(l.monto) })),
-      }),
+        imputaciones,
+      });
+    },
     onSuccess: () => {
       toast.success('Egreso registrado');
       resetForm();
@@ -140,10 +206,16 @@ export function NuevoEgresoDialog({
 
   function resetForm() {
     setMonto('');
-    setBeneficiarioId('');
+    // Si viene de un proveedor, no limpiamos beneficiario ni líneas (esa UX
+    // implica que el user quiere cargar varios pagos seguidos al mismo).
+    if (!beneficiarioInicialId) setBeneficiarioId('');
     setCategoriaId('');
     setDescripcion('');
-    setLineas([{ obraId: '', monto: '' }]);
+    setLineas(
+      imputacionesSugeridas && imputacionesSugeridas.length > 0
+        ? imputacionesSugeridas.map((s) => ({ obraId: s.obraId, monto: '' }))
+        : [{ obraId: '', monto: '' }],
+    );
     setChequeId('');
   }
 
@@ -204,6 +276,25 @@ export function NuevoEgresoDialog({
     const suma = redondeadas.reduce((a, b) => a + b, 0);
     redondeadas[redondeadas.length - 1] += Math.round((totalNum - suma) * 100) / 100;
     setLineas(obras.map((o, i) => ({ obraId: o.id, monto: redondeadas[i].toFixed(2) })));
+  }
+
+  // Modo proveedor: lookup rápido obraId → saldoPendiente (del último resumen)
+  const saldosPorObraMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (imputacionesSugeridas ?? []).forEach((s) => map.set(s.obraId, s.saldoPendiente));
+    return map;
+  }, [imputacionesSugeridas]);
+
+  // "Saldar todo": llena cada línea con el saldo pendiente de la obra. Si
+  // hay cheque, respeta el total del cheque proporcionalmente (atípico).
+  function saldarTodo() {
+    if (!esPagoProveedor || !imputacionesSugeridas) return;
+    setLineas(
+      imputacionesSugeridas.map((s) => ({
+        obraId: s.obraId,
+        monto: s.saldoPendiente > 0 ? s.saldoPendiente.toFixed(2) : '',
+      })),
+    );
   }
 
   return (
@@ -324,72 +415,39 @@ export function NuevoEgresoDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Categoría</Label>
-              <button
-                type="button"
-                onClick={() => setNuevaCatOpen(true)}
-                className="text-xs text-primary hover:underline"
-              >
-                + Nueva categoría
-              </button>
-            </div>
-            <Select
-              value={categoriaId}
-              onChange={(e) => {
-                setCategoriaId(e.target.value);
-                const nueva = categorias.find((c) => c.id === e.target.value);
-                if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
-                  setBeneficiarioId('');
-                }
-              }}
-            >
-              <option value="">Sin categoría</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.codigo} · {c.nombre}
-                </option>
-              ))}
-            </Select>
-            {esPrestamoEmpleado && (
-              <p className="text-xs text-warning">
-                Se va a crear un préstamo al empleado con saldo = monto. Se descontará en
-                liquidaciones futuras. Imputar a "Gastos generales" o "Varios".
-              </p>
-            )}
-            {prestamoRequiereEmpleado && (
-              <p className="text-xs text-danger">
-                Elegí un empleado (categoría "Préstamos a empleados" requiere beneficiario tipo EMPLEADO).
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Descripción</Label>
-            <Textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Detalle del gasto…"
-              rows={2}
-            />
-          </div>
-
+          {/* Imputación — va arriba de categoría porque es más importante
+              (define a qué obra se imputa el gasto). En modo "pago a
+              proveedor" las obras del último resumen vienen pre-llenas con
+              el saldo pendiente visible al lado; el usuario ingresa cuánto
+              paga a cada una (puede dejar menos, igual o más que el saldo). */}
           <div className="space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <Label>Imputación a obra(s) *</Label>
               <div className="flex gap-2 flex-wrap">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={repartirEnTodasLasObras}
-                  disabled={obras.length === 0 || totalNum <= 0}
-                  title="Reparte el monto en partes iguales entre todas las obras activas (ej: IPF, gasto general)"
-                >
-                  Gasto general
-                </Button>
-                {lineas.length > 1 && (
+                {esPagoProveedor && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={saldarTodo}
+                    title="Rellena cada línea con el saldo pendiente de la obra"
+                  >
+                    Saldar todo
+                  </Button>
+                )}
+                {!esPagoProveedor && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={repartirEnTodasLasObras}
+                    disabled={obras.length === 0 || totalNum <= 0}
+                    title="Reparte el monto en partes iguales entre todas las obras activas (ej: IPF, gasto general)"
+                  >
+                    Gasto general
+                  </Button>
+                )}
+                {!esPagoProveedor && lineas.length > 1 && (
                   <Button type="button" variant="outline" size="sm" onClick={autoDistribuir}>
                     Dividir en partes iguales
                   </Button>
@@ -401,46 +459,60 @@ export function NuevoEgresoDialog({
               </div>
             </div>
             <div className="space-y-2">
-              {lineas.map((l, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
-                  <Select
-                    value={l.obraId}
-                    onChange={(e) => updateLinea(idx, { obraId: e.target.value })}
-                  >
-                    <option value="">Elegí obra…</option>
-                    {obras.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.nombre}
-                      </option>
-                    ))}
-                  </Select>
-                  {lineas.length === 1 ? (
-                    <div className="text-sm text-muted italic text-right pr-2 num">
-                      {totalNum ? formatearMonto(totalNum, moneda) : '—'}
+              {lineas.map((l, idx) => {
+                const saldoObra = l.obraId ? saldosPorObraMap.get(l.obraId) : undefined;
+                const inputEditableSiempre = esPagoProveedor || lineas.length > 1;
+                return (
+                  <div key={idx} className="space-y-0.5">
+                    <div className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
+                      <Select
+                        value={l.obraId}
+                        onChange={(e) => updateLinea(idx, { obraId: e.target.value })}
+                      >
+                        <option value="">Elegí obra…</option>
+                        {obras.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.nombre}
+                          </option>
+                        ))}
+                      </Select>
+                      {inputEditableSiempre ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Monto"
+                          value={l.monto}
+                          onChange={(e) => updateLinea(idx, { monto: e.target.value })}
+                          className="num text-right"
+                        />
+                      ) : (
+                        <div className="text-sm text-muted italic text-right pr-2 num">
+                          {totalNum ? formatearMonto(totalNum, moneda) : '—'}
+                        </div>
+                      )}
+                      {lineas.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeLinea(idx)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                  ) : (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Monto"
-                      value={l.monto}
-                      onChange={(e) => updateLinea(idx, { monto: e.target.value })}
-                      className="num text-right"
-                    />
-                  )}
-                  {lineas.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeLinea(idx)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+                    {saldoObra !== undefined && (
+                      <div className="text-[11px] text-muted pl-1">
+                        Saldo pendiente:{' '}
+                        <span className={saldoObra > 0 ? 'text-danger font-medium' : 'text-success'}>
+                          {formatearMonto(saldoObra, moneda)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {lineas.length > 1 && totalNum > 0 && (
               <div className="text-xs text-right">
@@ -469,6 +541,59 @@ export function NuevoEgresoDialog({
                 Disponible del cheque: {formatearMonto(disponibleCheque, moneda)}
               </div>
             )}
+          </div>
+
+          {!ocultarCategoria && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Categoría</Label>
+                <button
+                  type="button"
+                  onClick={() => setNuevaCatOpen(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva categoría
+                </button>
+              </div>
+              <Select
+                value={categoriaId}
+                onChange={(e) => {
+                  setCategoriaId(e.target.value);
+                  const nueva = categorias.find((c) => c.id === e.target.value);
+                  if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
+                    setBeneficiarioId('');
+                  }
+                }}
+              >
+                <option value="">Sin categoría</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} · {c.nombre}
+                  </option>
+                ))}
+              </Select>
+              {esPrestamoEmpleado && (
+                <p className="text-xs text-warning">
+                  Se va a crear un préstamo al empleado con saldo = monto. Se descontará en
+                  liquidaciones futuras. Imputar a "Gastos generales" o "Varios".
+                </p>
+              )}
+              {prestamoRequiereEmpleado && (
+                <p className="text-xs text-danger">
+                  Elegí un empleado (categoría "Préstamos a empleados" requiere beneficiario tipo EMPLEADO).
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Descripción</Label>
+            <Textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Detalle del gasto…"
+              rows={2}
+            />
           </div>
 
           <DialogFooter>
