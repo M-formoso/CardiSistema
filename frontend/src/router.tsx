@@ -11,6 +11,8 @@ import { LiquidacionDetallePage } from '@/pages/liquidaciones/LiquidacionDetalle
 import { EmpleadosPage } from '@/pages/EmpleadosPage';
 import { EmpleadoDetallePage } from '@/pages/empleados/EmpleadoDetallePage';
 import { CertificacionesPage } from '@/pages/CertificacionesPage';
+import { ProveedoresPage } from '@/pages/ProveedoresPage';
+import { ProveedorDetallePage } from '@/pages/proveedores/ProveedorDetallePage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -33,6 +35,10 @@ export const router = createBrowserRouter([
           { path: 'empleados', element: <EmpleadosPage /> },
           { path: 'empleados/:id', element: <EmpleadoDetallePage /> },
           { path: 'certificaciones', element: <CertificacionesPage /> },
+
+          // Proveedores + cta cte
+          { path: 'proveedores', element: <ProveedoresPage /> },
+          { path: 'proveedores/:id', element: <ProveedorDetallePage /> },
 
           // Detalle que necesita ruta propia (link desde dentro de un tab)
           { path: 'liquidaciones/:id', element: <LiquidacionDetallePage /> },

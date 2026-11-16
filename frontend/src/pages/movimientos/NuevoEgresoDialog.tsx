@@ -34,10 +34,14 @@ export function NuevoEgresoDialog({
   open,
   onOpenChange,
   onCreated,
+  beneficiarioInicialId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated: () => void;
+  /** Si viene, el beneficiario arranca pre-seleccionado (útil para pagar
+   * desde la pantalla de un proveedor). El usuario puede cambiarlo igual. */
+  beneficiarioInicialId?: string;
 }) {
   const qc = useQueryClient();
   const [nuevaCatOpen, setNuevaCatOpen] = useState(false);
@@ -45,7 +49,7 @@ export function NuevoEgresoDialog({
   const [cajaId, setCajaId] = useState('');
   const [monto, setMonto] = useState('');
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO');
-  const [beneficiarioId, setBeneficiarioId] = useState('');
+  const [beneficiarioId, setBeneficiarioId] = useState(beneficiarioInicialId ?? '');
   const [categoriaId, setCategoriaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [lineas, setLineas] = useState<Linea[]>([{ obraId: '', monto: '' }]);

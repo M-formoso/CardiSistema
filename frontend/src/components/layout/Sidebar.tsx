@@ -6,6 +6,7 @@ import {
   FileCheck2,
   HardHat,
   Settings2,
+  Truck,
   UsersRound,
   LogOut,
   Moon,
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/', label: 'Billetera', icon: Wallet, end: true },
   { to: '/empleados', label: 'Empleados', icon: HardHat },
   { to: '/certificaciones', label: 'Certificaciones', icon: FileCheck2 },
+  { to: '/proveedores', label: 'Proveedores', icon: Truck },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart2 },
 ];
 
