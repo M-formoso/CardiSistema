@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -285,6 +286,33 @@ export function NuevoEgresoDialog({
     return map;
   }, [imputacionesSugeridas]);
 
+  // Opciones para los combobox buscables (reemplazan a los <Select> nativos)
+  const cajasOpts = useMemo<ComboboxOption[]>(
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre, hint: `${c.moneda} · ${c.tipo}` })),
+    [cajas],
+  );
+  const chequesOpts = useMemo<ComboboxOption[]>(
+    () =>
+      chequesDisponibles.map((c) => ({
+        value: c.id,
+        label: `N° ${c.numero} · ${c.banco ?? 's/banco'} · ${formatearMonto(c.monto, c.moneda)}`,
+        hint: `pago ${formatearFecha(c.fechaPago)}${c.librador ? ' · ' + c.librador : c.titular ? ' · ' + c.titular : ''}`,
+      })),
+    [chequesDisponibles],
+  );
+  const benesOpts = useMemo<ComboboxOption[]>(
+    () => benesFiltrados.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
+    [benesFiltrados],
+  );
+  const categoriasOpts = useMemo<ComboboxOption[]>(
+    () => categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo })),
+    [categorias],
+  );
+  const obrasOpts = useMemo<ComboboxOption[]>(
+    () => obras.map((o) => ({ value: o.id, label: o.nombre })),
+    [obras],
+  );
+
   // "Saldar todo": llena cada línea con el saldo pendiente de la obra. Si
   // hay cheque, respeta el total del cheque proporcionalmente (atípico).
   function saldarTodo() {
@@ -324,14 +352,13 @@ export function NuevoEgresoDialog({
             </div>
             <div className="space-y-2">
               <Label>Caja *</Label>
-              <Select value={cajaId} onChange={(e) => onCajaChange(e.target.value)} required>
-                <option value="">Elegí…</option>
-                {cajas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.moneda})
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={cajasOpts}
+                value={cajaId}
+                onChange={onCajaChange}
+                placeholder="Elegí caja…"
+                searchPlaceholder="Buscar caja…"
+              />
             </div>
             <div className="space-y-2">
               <Label>Medio *</Label>
@@ -358,16 +385,13 @@ export function NuevoEgresoDialog({
                 </p>
               ) : (
                 <>
-                  <Select value={chequeId} onChange={(e) => onChequeChange(e.target.value)} required>
-                    <option value="">Elegí cheque…</option>
-                    {chequesDisponibles.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        N° {c.numero} · {c.banco ?? 's/banco'} · {formatearMonto(c.monto, c.moneda)}
-                        {' · pago '}
-                        {formatearFecha(c.fechaPago)}
-                      </option>
-                    ))}
-                  </Select>
+                  <Combobox
+                    options={chequesOpts}
+                    value={chequeId}
+                    onChange={onChequeChange}
+                    placeholder="Elegí cheque…"
+                    searchPlaceholder="Buscar por N°, banco o librador…"
+                  />
                   {chequeSel && (
                     <div className="text-[11px] text-muted">
                       Librador: {chequeSel.librador ?? chequeSel.titular ?? '—'} · Monto:{' '}
@@ -404,14 +428,14 @@ export function NuevoEgresoDialog({
               <Label>
                 Beneficiario {esPrestamoEmpleado && <span className="text-warning">(solo empleados)</span>}
               </Label>
-              <Select value={beneficiarioId} onChange={(e) => setBeneficiarioId(e.target.value)}>
-                <option value="">Sin beneficiario</option>
-                {benesFiltrados.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nombre} · {b.tipo}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                options={benesOpts}
+                value={beneficiarioId}
+                onChange={setBeneficiarioId}
+                placeholder="Sin beneficiario"
+                searchPlaceholder="Buscar beneficiario…"
+                allLabel="Sin beneficiario"
+              />
             </div>
           </div>
 
@@ -465,17 +489,13 @@ export function NuevoEgresoDialog({
                 return (
                   <div key={idx} className="space-y-0.5">
                     <div className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
-                      <Select
+                      <Combobox
+                        options={obrasOpts}
                         value={l.obraId}
-                        onChange={(e) => updateLinea(idx, { obraId: e.target.value })}
-                      >
-                        <option value="">Elegí obra…</option>
-                        {obras.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.nombre}
-                          </option>
-                        ))}
-                      </Select>
+                        onChange={(v) => updateLinea(idx, { obraId: v })}
+                        placeholder="Elegí obra…"
+                        searchPlaceholder="Buscar obra…"
+                      />
                       {inputEditableSiempre ? (
                         <Input
                           type="number"
@@ -555,23 +575,20 @@ export function NuevoEgresoDialog({
                   + Nueva categoría
                 </button>
               </div>
-              <Select
+              <Combobox
+                options={categoriasOpts}
                 value={categoriaId}
-                onChange={(e) => {
-                  setCategoriaId(e.target.value);
-                  const nueva = categorias.find((c) => c.id === e.target.value);
+                onChange={(v) => {
+                  setCategoriaId(v);
+                  const nueva = categorias.find((c) => c.id === v);
                   if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
                     setBeneficiarioId('');
                   }
                 }}
-              >
-                <option value="">Sin categoría</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo} · {c.nombre}
-                  </option>
-                ))}
-              </Select>
+                placeholder="Sin categoría"
+                searchPlaceholder="Buscar categoría…"
+                allLabel="Sin categoría"
+              />
               {esPrestamoEmpleado && (
                 <p className="text-xs text-warning">
                   Se va a crear un préstamo al empleado con saldo = monto. Se descontará en

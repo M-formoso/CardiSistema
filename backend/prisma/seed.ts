@@ -114,6 +114,7 @@ const CATEGORIAS = [
   { codigo: 'SERV', nombre: 'Servicios', orden: 80 },
   { codigo: 'GRAL', nombre: 'Gastos generales', orden: 90 },
   { codigo: 'PREST_EMP', nombre: 'Préstamos a empleados', orden: 95 },
+  { codigo: 'PAGO_PROV', nombre: 'Pago a proveedor', orden: 98 },
   { codigo: 'RET', nombre: 'Retiros', orden: 100 },
 ] as const;
 

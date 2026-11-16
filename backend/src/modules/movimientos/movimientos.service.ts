@@ -156,6 +156,26 @@ export class MovimientosService {
       dto.beneficiarioId,
     );
 
+    // Si el egreso es a un beneficiario PROVEEDOR y no viene categoría, auto-
+    // asignar la categoría "Pago a proveedor" (código PAGO_PROV). Se crea on
+    // demand si no existe todavía — así el feature funciona en prod sin
+    // depender de que el seed haya corrido ya.
+    let categoriaIdFinal = dto.categoriaId;
+    if (!categoriaIdFinal && dto.beneficiarioId) {
+      const ben = await this.prisma.beneficiario.findUnique({
+        where: { id: dto.beneficiarioId },
+        select: { tipo: true },
+      });
+      if (ben?.tipo === TipoBeneficiario.PROVEEDOR) {
+        const cat = await this.prisma.categoriaGasto.upsert({
+          where: { codigo: 'PAGO_PROV' },
+          create: { codigo: 'PAGO_PROV', nombre: 'Pago a proveedor', orden: 98 },
+          update: {},
+        });
+        categoriaIdFinal = cat.id;
+      }
+    }
+
     const { montoArs, montoUsd } = this.convertirMontos(dto.monto, caja.moneda, cotizacion);
 
     const grupoId = randomUUID();
@@ -174,7 +194,7 @@ export class MovimientosService {
           montoArs: new Prisma.Decimal(montoArs),
           montoUsd: new Prisma.Decimal(montoUsd),
           beneficiarioId: dto.beneficiarioId,
-          categoriaId: dto.categoriaId,
+          categoriaId: categoriaIdFinal,
           chequeId: dto.chequeId,
           grupoId,
           origen: esPrestamoEmpleado ? OrigenMovimiento.PRESTAMO : OrigenMovimiento.MANUAL,
