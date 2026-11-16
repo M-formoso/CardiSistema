@@ -48,14 +48,20 @@ export function CargarResumenDialog({
     [lineas],
   );
 
-  const puedeEnviar = useMemo(() => {
-    if (lineas.length === 0 || totalNum <= 0) return false;
-    const obraIds = lineas.filter((l) => l.obraId).map((l) => l.obraId);
-    if (obraIds.length !== lineas.length) return false;
+  const errorValidacion = useMemo<string | null>(() => {
+    if (lineas.length === 0) return 'Agregá al menos una obra';
+    if (lineas.some((l) => !l.obraId)) return 'Falta elegir obra en alguna línea';
+    const obraIds = lineas.map((l) => l.obraId);
     const unicos = new Set(obraIds);
-    if (unicos.size !== obraIds.length) return false; // duplicados
-    return true;
-  }, [lineas, totalNum]);
+    if (unicos.size !== obraIds.length) {
+      return 'No se puede repetir la misma obra en el resumen';
+    }
+    if (lineas.some((l) => !l.monto || Number(l.monto) <= 0)) {
+      return 'Cada obra tiene que tener un monto mayor a 0';
+    }
+    return null;
+  }, [lineas]);
+  const puedeEnviar = errorValidacion === null;
 
   const m = useMutation({
     mutationFn: () =>
@@ -170,10 +176,17 @@ export function CargarResumenDialog({
                 </div>
               ))}
             </div>
-            <div className="text-xs text-right text-muted pt-1 border-t border-border">
-              Total:{' '}
-              <span className="font-semibold num text-foreground">
-                {formatearMonto(totalNum, 'ARS')}
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
+              {errorValidacion ? (
+                <span className="text-danger">{errorValidacion}</span>
+              ) : (
+                <span />
+              )}
+              <span className="text-muted">
+                Total:{' '}
+                <span className="font-semibold num text-foreground">
+                  {formatearMonto(totalNum, 'ARS')}
+                </span>
               </span>
             </div>
           </div>
