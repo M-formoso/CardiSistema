@@ -298,7 +298,7 @@ function NuevaCertificacionWizard({
           nombre: emp.nombre,
           jornal: Number(emp.legajo?.jornal ?? 0),
           valorHoraExtra: Number(emp.legajo?.valorHoraExtra ?? 0),
-          dias: '5',
+          dias: '0',
           horasExtras: '0',
           descripcion: '',
         },
@@ -529,7 +529,7 @@ function NuevaCertificacionWizard({
                             type="number"
                             step="0.5"
                             min="0"
-                            max="7"
+                            max="6"
                             value={s.dias}
                             onChange={(e) =>
                               actualizarEmpleado(s.empleadoId, { dias: e.target.value })
@@ -543,6 +543,7 @@ function NuevaCertificacionWizard({
                             type="number"
                             step="0.5"
                             min="0"
+                            max="12"
                             value={s.horasExtras}
                             onChange={(e) =>
                               actualizarEmpleado(s.empleadoId, {
