@@ -820,10 +820,17 @@ export function NuevoEgresoDialog({
       </DialogContent>
       {nuevaCatOpen && (
         <NuevaCategoriaGastoDialog
+          tipoInicial={
+            tipoEgreso === 'SERVICIO'
+              ? 'SERVICIO'
+              : tipoEgreso === 'GENERAL'
+                ? 'GENERAL'
+                : 'GENERAL'
+          }
           onClose={() => setNuevaCatOpen(false)}
           onCreada={(cat) => {
             setCategoriaId(cat.id);
-            qc.invalidateQueries({ queryKey: ['categorias', 'activas'] });
+            qc.invalidateQueries({ queryKey: ['categorias'] });
             setNuevaCatOpen(false);
           }}
         />
@@ -835,16 +842,31 @@ export function NuevoEgresoDialog({
 function NuevaCategoriaGastoDialog({
   onClose,
   onCreada,
+  tipoInicial = 'GENERAL',
 }: {
   onClose: () => void;
   onCreada: (cat: Categoria) => void;
+  /** Tipo sugerido cuando se crea desde el flujo de egreso con un tipo ya
+   * elegido (ej: estoy en modo SERVICIO → arranco en SERVICIO). */
+  tipoInicial?: Categoria['tipo'];
 }) {
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState<Categoria['tipo']>(tipoInicial);
+  // Reunión Dani 18/11: cuando se crea una categoría de SERVICIO, puede
+  // marcarse como "vinculada a vehículos" (Seguro, Patentes, Rentas
+  // Automotor, Mecánica). Al elegirla en el egreso, el reparto se hace a
+  // vehículos en vez de obras.
+  const [vinculadaVehiculo, setVinculadaVehiculo] = useState(false);
 
   const m = useMutation({
     mutationFn: () =>
-      categoriasService.create({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim() }),
+      categoriasService.create({
+        codigo: codigo.trim().toUpperCase(),
+        nombre: nombre.trim(),
+        tipo,
+        vinculadaVehiculo: tipo === 'SERVICIO' ? vinculadaVehiculo : false,
+      }),
     onSuccess: (cat) => {
       toast.success('Categoría creada');
       onCreada(cat);
@@ -894,6 +916,39 @@ function NuevaCategoriaGastoDialog({
               />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label>Tipo *</Label>
+            <Combobox
+              options={[
+                { value: 'SERVICIO', label: 'Servicio', hint: 'EPEC, Rentas, Seguros…' },
+                { value: 'PROVEEDOR', label: 'Proveedor', hint: 'Casa Santos, Prolectric…' },
+                { value: 'GENERAL', label: 'General', hint: 'Gastos generales' },
+                { value: 'EMPLEADO', label: 'Empleado', hint: 'Jornales, préstamos' },
+                { value: 'INGRESO', label: 'Ingreso', hint: 'Solo para ingresos' },
+              ]}
+              value={tipo}
+              onChange={(v) => setTipo(v as Categoria['tipo'])}
+              placeholder="Elegí tipo…"
+              searchPlaceholder="Buscar tipo…"
+            />
+          </div>
+          {tipo === 'SERVICIO' && (
+            <label className="flex items-start gap-2 rounded-md border border-border bg-muted/5 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={vinculadaVehiculo}
+                onChange={(e) => setVinculadaVehiculo(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-medium">Vinculada a vehículos</div>
+                <div className="text-[11px] text-muted">
+                  Al elegir esta categoría en un egreso, el reparto será entre vehículos
+                  (seguro, patente, mecánica, etc.) en lugar de obras.
+                </div>
+              </div>
+            </label>
+          )}
           <DialogFooter>
             <Button variant="outline" type="button" onClick={onClose}>
               Cancelar
