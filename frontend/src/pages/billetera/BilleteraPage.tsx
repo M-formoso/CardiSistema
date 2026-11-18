@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   ArrowLeftRight,
   ChevronDown,
   Loader2,
   Minus,
   Plus,
+  Printer,
   RefreshCw,
   Search,
   ScrollText,
@@ -453,6 +455,34 @@ export function BilleteraPage() {
                   Limpiar
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={async () => {
+                  try {
+                    const blob = await movimientosService.pdfBlob({
+                      cajaId: cajaId || undefined,
+                      tipo: tipo || undefined,
+                      obraId: obraId || undefined,
+                      categoriaId: categoriaId || undefined,
+                      beneficiarioId: beneficiarioId || undefined,
+                      desde,
+                      hasta,
+                      q: q || undefined,
+                    });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                    // Liberar después de que el browser lo abra
+                    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                  } catch {
+                    toast.error('No se pudo generar el PDF');
+                  }
+                }}
+              >
+                <Printer className="h-3.5 w-3.5 mr-1" />
+                Imprimir
+              </Button>
             </div>
           </div>
         </div>

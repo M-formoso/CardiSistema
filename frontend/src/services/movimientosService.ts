@@ -167,6 +167,23 @@ export const movimientosService = {
     const { data } = await apiClient.patch<Movimiento>(`/movimientos/${id}`, patch);
     return data;
   },
+  pdfBlob: async (filtros: FiltrosMovimientos) => {
+    const params: Record<string, string> = {};
+    if (filtros.cajaId) params.cajaId = filtros.cajaId;
+    if (filtros.tipo) params.tipo = filtros.tipo;
+    if (filtros.obraId) params.obraId = filtros.obraId;
+    if (filtros.categoriaId) params.categoriaId = filtros.categoriaId;
+    if (filtros.beneficiarioId) params.beneficiarioId = filtros.beneficiarioId;
+    if (filtros.estado) params.estado = filtros.estado;
+    if (filtros.desde) params.desde = filtros.desde;
+    if (filtros.hasta) params.hasta = filtros.hasta;
+    if (filtros.q) params.q = filtros.q;
+    const { data } = await apiClient.get('/movimientos/pdf', {
+      params,
+      responseType: 'blob',
+    });
+    return data as Blob;
+  },
 };
 
 export type EditarMovimientoInput = {

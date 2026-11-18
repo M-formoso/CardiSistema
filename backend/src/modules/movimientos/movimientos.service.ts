@@ -17,7 +17,11 @@ import {
   TipoMovimiento,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { arsAUsd, repartirMonto, usdAArs } from '@cardi/shared';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { Writable } from 'node:stream';
+import PDFDocument from 'pdfkit';
+import { arsAUsd, formatearMonto, repartirMonto, usdAArs } from '@cardi/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CotizacionesService } from '../cotizaciones/cotizaciones.service';
@@ -704,6 +708,249 @@ export class MovimientosService {
       despues: actualizado as unknown,
     });
     return actualizado;
+  }
+
+  // ================= PDF DE BILLETERA (filtros aplicados) =================
+
+  /**
+   * Genera el PDF de la billetera con los movimientos que matchean los filtros
+   * aplicados. Reunión Dani 18/11: "botón Imprimir que lleve a un PDF con
+   * logo de los movimientos filtrados. Lo imprime para anotar a mano."
+   *
+   * Formato A4 horizontal (muchas columnas). Hasta 500 movimientos por PDF.
+   */
+  async renderListadoPdf(filtros: FiltrosMovimientoDto, out: Writable) {
+    // Reusamos findAll pero sin paginar — pedimos un pageSize grande.
+    const resultado = await this.findAll({
+      ...filtros,
+      page: 1,
+      pageSize: 500,
+    });
+
+    // Resolver nombres legibles de los filtros aplicados (para el header)
+    const [caja, obra, categoria, beneficiario] = await Promise.all([
+      filtros.cajaId
+        ? this.prisma.caja.findUnique({ where: { id: filtros.cajaId }, select: { nombre: true } })
+        : null,
+      filtros.obraId
+        ? this.prisma.obra.findUnique({ where: { id: filtros.obraId }, select: { nombre: true } })
+        : null,
+      filtros.categoriaId
+        ? this.prisma.categoriaGasto.findUnique({
+            where: { id: filtros.categoriaId },
+            select: { nombre: true },
+          })
+        : null,
+      filtros.beneficiarioId
+        ? this.prisma.beneficiario.findUnique({
+            where: { id: filtros.beneficiarioId },
+            select: { nombre: true },
+          })
+        : null,
+    ]);
+
+    const filtrosLegibles: Array<[string, string]> = [];
+    if (caja) filtrosLegibles.push(['Caja', caja.nombre]);
+    if (filtros.tipo) filtrosLegibles.push(['Tipo', filtros.tipo]);
+    if (obra) filtrosLegibles.push(['Obra', obra.nombre]);
+    if (categoria) filtrosLegibles.push(['Categoría', categoria.nombre]);
+    if (beneficiario) filtrosLegibles.push(['Proveedor/Origen', beneficiario.nombre]);
+    if (filtros.estado) filtrosLegibles.push(['Estado', filtros.estado]);
+    if (filtros.desde)
+      filtrosLegibles.push(['Desde', new Date(filtros.desde).toLocaleDateString('es-AR')]);
+    if (filtros.hasta)
+      filtrosLegibles.push(['Hasta', new Date(filtros.hasta).toLocaleDateString('es-AR')]);
+    if (filtros.q) filtrosLegibles.push(['Texto', filtros.q]);
+    if (filtrosLegibles.length === 0)
+      filtrosLegibles.push(['Período', 'Todos los movimientos sin filtrar']);
+
+    // Totales ingresos/egresos (en pesos argentinos)
+    let totalIngresos = 0;
+    let totalEgresos = 0;
+    for (const m of resultado.data) {
+      const monto = Number(m.monto);
+      if (m.tipo === TipoMovimiento.INGRESO) totalIngresos += monto;
+      else if (m.tipo === TipoMovimiento.EGRESO) totalEgresos += monto;
+    }
+
+    const logoPath = this.resolverLogoPath();
+
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
+    doc.pipe(out);
+
+    const PRIMARY = '#4390B6';
+    const TEXT = '#111827';
+    const MUTED = '#6b7280';
+    const anchoDoc = doc.page.width - 60; // dentro de los márgenes
+
+    // ----- Header -----
+    if (logoPath) {
+      try {
+        doc.image(logoPath, 30, 25, { width: 40 });
+      } catch {
+        // ignorar
+      }
+    }
+    doc
+      .fontSize(16)
+      .fillColor(TEXT)
+      .text('Movimientos de Billetera', 80, 28, { continued: false });
+    doc
+      .fontSize(8)
+      .fillColor(MUTED)
+      .text(
+        `Generado el ${new Date().toLocaleString('es-AR')}`,
+        80,
+        50,
+      );
+    doc.moveTo(30, 72).lineTo(doc.page.width - 30, 72).strokeColor(PRIMARY).lineWidth(1).stroke();
+
+    // ----- Filtros aplicados -----
+    doc.fontSize(8).fillColor(MUTED).text('Filtros aplicados:', 30, 80);
+    let filtroX = 110;
+    const filtroY = 80;
+    for (const [k, v] of filtrosLegibles) {
+      const label = `${k}: `;
+      doc.font('Helvetica').fontSize(8).fillColor(MUTED).text(label, filtroX, filtroY, {
+        continued: true,
+      });
+      doc.font('Helvetica-Bold').fillColor(TEXT).text(`${v}  `, { continued: true });
+      filtroX = doc.x + 4;
+      doc.font('Helvetica');
+    }
+
+    // ----- Tabla -----
+    const columnas = [
+      { label: 'Fecha', x: 30, w: 55 },
+      { label: 'Tipo', x: 85, w: 45 },
+      { label: 'Caja', x: 130, w: 80 },
+      { label: 'Monto', x: 210, w: 70, align: 'right' as const },
+      { label: 'Obra(s)', x: 280, w: 100 },
+      { label: 'Categoría', x: 380, w: 70 },
+      { label: 'Proveedor/Origen', x: 450, w: 110 },
+      { label: 'Descripción', x: 560, w: 180 },
+      { label: 'Estado', x: 740, w: 55 },
+    ];
+
+    let y = 110;
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(PRIMARY);
+    for (const c of columnas) {
+      doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left' });
+    }
+    y += 12;
+    doc.moveTo(30, y).lineTo(doc.page.width - 30, y).strokeColor('#e5e7eb').lineWidth(0.4).stroke();
+    y += 4;
+
+    doc.font('Helvetica').fontSize(7).fillColor(TEXT);
+
+    for (const mov of resultado.data) {
+      // Salto de página si no entra
+      if (y > doc.page.height - 80) {
+        doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 });
+        y = 30;
+        // Re-render header de tabla
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(PRIMARY);
+        for (const c of columnas) {
+          doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left' });
+        }
+        y += 12;
+        doc
+          .moveTo(30, y)
+          .lineTo(doc.page.width - 30, y)
+          .strokeColor('#e5e7eb')
+          .lineWidth(0.4)
+          .stroke();
+        y += 4;
+        doc.font('Helvetica').fontSize(7).fillColor(TEXT);
+      }
+
+      const obrasStr = mov.imputaciones?.map((i) => i.obra.nombre).join(', ') ?? '';
+      const obraIngresoStr =
+        mov.tipo === TipoMovimiento.INGRESO && mov.obraIngresoId
+          ? // Para ingresos usamos obraIngresoId (no viene included por defecto, pero
+            // el findAll de arriba no lo trae; uso string vacío por ahora)
+            ''
+          : '';
+      const color =
+        mov.tipo === TipoMovimiento.INGRESO
+          ? '#047857'
+          : mov.tipo === TipoMovimiento.EGRESO
+            ? '#b91c1c'
+            : MUTED;
+
+      doc.fillColor(TEXT);
+      doc.text(new Date(mov.fecha).toLocaleDateString('es-AR'), 30, y, { width: 55 });
+      doc.fillColor(color).text(mov.tipo, 85, y, { width: 45 });
+      doc.fillColor(TEXT).text(mov.caja.nombre, 130, y, { width: 80 });
+      doc
+        .fillColor(color)
+        .text(formatearMonto(mov.monto.toString(), mov.moneda), 210, y, {
+          width: 70,
+          align: 'right',
+        });
+      doc.fillColor(TEXT).text(obrasStr || obraIngresoStr || '—', 280, y, { width: 100 });
+      doc.fillColor(MUTED).text(mov.categoria?.nombre ?? '—', 380, y, { width: 70 });
+      doc.fillColor(TEXT).text(mov.beneficiario?.nombre ?? '—', 450, y, { width: 110 });
+      doc.fillColor(MUTED).text(mov.descripcion ?? '—', 560, y, { width: 180 });
+      doc.fillColor(mov.estado === EstadoMovimiento.CONFIRMADO ? '#047857' : MUTED).text(
+        mov.estado,
+        740,
+        y,
+        { width: 55 },
+      );
+
+      y += 16;
+    }
+
+    // ----- Totales -----
+    if (y > doc.page.height - 100) {
+      doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 });
+      y = 30;
+    }
+    y += 10;
+    doc.moveTo(30, y).lineTo(doc.page.width - 30, y).strokeColor(PRIMARY).lineWidth(0.8).stroke();
+    y += 10;
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor(MUTED)
+      .text(`${resultado.data.length} movimiento(s)`, 30, y);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .fillColor('#047857')
+      .text(`INGRESOS: ${formatearMonto(totalIngresos.toString(), Moneda.ARS)}`, anchoDoc - 440, y, {
+        width: 160,
+        align: 'right',
+      });
+    doc
+      .fillColor('#b91c1c')
+      .text(`EGRESOS: ${formatearMonto(totalEgresos.toString(), Moneda.ARS)}`, anchoDoc - 280, y, {
+        width: 150,
+        align: 'right',
+      });
+    doc.fillColor(PRIMARY).text(
+      `NETO: ${formatearMonto((totalIngresos - totalEgresos).toString(), Moneda.ARS)}`,
+      anchoDoc - 130,
+      y,
+      { width: 160, align: 'right' },
+    );
+
+    doc.end();
+  }
+
+  private resolverLogoPath(): string | null {
+    const candidatos = [
+      path.resolve(process.cwd(), 'assets/brand/logo.png'),
+      path.resolve(process.cwd(), '../assets/brand/logo.png'),
+      path.resolve(__dirname, '../../../../../assets/brand/logo.png'),
+    ];
+    for (const p of candidatos) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
   }
 
   // ================= HELPERS =================

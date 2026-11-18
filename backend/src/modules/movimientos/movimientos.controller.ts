@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, HttpStatus, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -21,6 +22,22 @@ export class MovimientosController {
   @RequirePermission('movimientos', 'ver')
   findAll(@Query() filtros: FiltrosMovimientoDto) {
     return this.mov.findAll(filtros);
+  }
+
+  /**
+   * PDF con logo de los movimientos filtrados (reunión 18/11). Para que Dani
+   * lo imprima y haga anotaciones a mano. Respeta todos los filtros activos:
+   * caja, tipo, obra, categoría, beneficiario, estado, fechas, texto.
+   */
+  @Get('pdf')
+  @Header('Content-Type', 'application/pdf')
+  @RequirePermission('movimientos', 'ver')
+  async pdf(@Query() filtros: FiltrosMovimientoDto, @Res() res: Response) {
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="movimientos-${new Date().toISOString().slice(0, 10)}.pdf"`,
+    );
+    await this.mov.renderListadoPdf(filtros, res);
   }
 
   @Get(':id')
