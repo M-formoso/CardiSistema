@@ -390,7 +390,6 @@ export function ProveedorDetallePage() {
             qc.invalidateQueries({ queryKey: ['cajas', 'saldos'] });
           }}
           beneficiarioInicialId={id}
-          ocultarCategoria
           imputacionesSugeridas={data.saldosPorObra.map((s) => ({
             obraId: s.obraId,
             nombre: s.nombre,

@@ -53,7 +53,6 @@ export function NuevoEgresoDialog({
   onOpenChange,
   onCreated,
   beneficiarioInicialId,
-  ocultarCategoria,
   imputacionesSugeridas,
 }: {
   open: boolean;
@@ -62,9 +61,6 @@ export function NuevoEgresoDialog({
   /** Si viene, el beneficiario arranca pre-seleccionado (útil para pagar
    * desde la pantalla de un proveedor). El usuario puede cambiarlo igual. */
   beneficiarioInicialId?: string;
-  /** Para pago a proveedor: la categoría no aplica (ya se sabe a quién se
-   * paga), se oculta la sección entera. */
-  ocultarCategoria?: boolean;
   /** Para pago a proveedor: arrancar con las obras que tienen saldo
    * pendiente, con montos en 0 editables. El usuario ingresa cuánto le
    * paga a cada una (puede dejar menos, igual o más que el saldo). */
@@ -175,6 +171,10 @@ export function NuevoEgresoDialog({
     // Tipo de egreso obligatorio (reunión 18/11), salvo cuando ya viene
     // forzado por el flujo de pago a proveedor.
     if (!tipoEgreso) return false;
+    // Según el tipo se requiere categoría o proveedor
+    if (tipoEgreso === 'SERVICIO' && !categoriaId) return false;
+    if (tipoEgreso === 'GENERAL' && !categoriaId) return false;
+    if (tipoEgreso === 'PROVEEDOR' && !beneficiarioId) return false;
     if (prestamoRequiereEmpleado) return false;
     if (modoCheque && !chequeId) return false;
 
@@ -203,6 +203,8 @@ export function NuevoEgresoDialog({
     cajaId,
     totalNum,
     tipoEgreso,
+    categoriaId,
+    beneficiarioId,
     lineas,
     lineasVeh,
     diferencia,
@@ -399,7 +401,8 @@ export function NuevoEgresoDialog({
         <DialogHeader>
           <DialogTitle>Nuevo egreso</DialogTitle>
           <DialogDescription>
-            Una sola carga: monto, caja, beneficiario e imputación a obra(s).
+            Elegí tipo (Servicio / Proveedor / General), monto y caja. Según el tipo se abre el
+            selector correspondiente abajo.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -413,46 +416,6 @@ export function NuevoEgresoDialog({
           }}
           className="space-y-4"
         >
-          {/* Reunión Dani 18/11: primero se elige el TIPO de egreso. Según
-              el tipo se filtran las categorías disponibles. Si entramos desde
-              el detalle de un proveedor (esPagoProveedor), ya arranca en
-              PROVEEDOR y no mostramos el selector. */}
-          {!esPagoProveedor && (
-            <div className="rounded-md border border-border bg-muted/5 p-3">
-              <Label className="text-xs uppercase tracking-wide text-muted mb-2 block">
-                Tipo de egreso *
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {(['SERVICIO', 'PROVEEDOR', 'GENERAL'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => {
-                      setTipoEgreso(t);
-                      setCategoriaId(''); // reset categoría al cambiar tipo
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm border transition-colors ${
-                      tipoEgreso === t
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-border hover:bg-muted/5'
-                    }`}
-                  >
-                    {t === 'SERVICIO' ? 'Servicio' : t === 'PROVEEDOR' ? 'Proveedor' : 'General'}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-muted mt-2">
-                {tipoEgreso === 'SERVICIO' &&
-                  'EPEC, Rentas, Municipalidad, Seguros, Mecánica, etc. Si la categoría está vinculada a vehículos, el gasto se imputa a uno o varios vehículos.'}
-                {tipoEgreso === 'PROVEEDOR' &&
-                  'Pago a proveedor (Casa Santo, Prolectric, etc.) con reparto por obra.'}
-                {tipoEgreso === 'GENERAL' &&
-                  'Gasto general sin categoría específica. Reparto por obra o "Gasto general" entre todas.'}
-                {!tipoEgreso && 'Elegí el tipo para continuar con la carga.'}
-              </p>
-            </div>
-          )}
-
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label>Fecha *</Label>
@@ -530,19 +493,99 @@ export function NuevoEgresoDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>
-                Beneficiario {esPrestamoEmpleado && <span className="text-warning">(solo empleados)</span>}
-              </Label>
+              <Label>Tipo *</Label>
+              {esPagoProveedor ? (
+                <div className="h-10 flex items-center px-3 rounded-md border border-border bg-muted/5 text-sm text-muted">
+                  Proveedor (desde el detalle)
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  {(['SERVICIO', 'PROVEEDOR', 'GENERAL'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setTipoEgreso(t);
+                        setCategoriaId('');
+                        setBeneficiarioId('');
+                      }}
+                      className={`flex-1 h-10 rounded-md text-sm border transition-colors ${
+                        tipoEgreso === t
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border hover:bg-muted/5'
+                      }`}
+                    >
+                      {t === 'SERVICIO' ? 'Servicio' : t === 'PROVEEDOR' ? 'Proveedor' : 'General'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Combo dependiente del tipo: categorías (Servicio/General) o
+              proveedores. Reemplaza al bloque de "Categoría" standalone. */}
+          {tipoEgreso === 'SERVICIO' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Servicio (categoría) *</Label>
+                <button
+                  type="button"
+                  onClick={() => setNuevaCatOpen(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva categoría
+                </button>
+              </div>
+              <Combobox
+                options={categoriasOpts}
+                value={categoriaId}
+                onChange={setCategoriaId}
+                placeholder="Elegí servicio…"
+                searchPlaceholder="Buscar (EPEC, Rentas, Seguros…)"
+                emptyText="Sin categorías de servicio. Creá una con + Nueva categoría."
+              />
+              <p className="text-[11px] text-muted">
+                Si la categoría está vinculada a vehículos, el gasto se imputa a uno o varios
+                vehículos en vez de obras.
+              </p>
+            </div>
+          )}
+          {tipoEgreso === 'PROVEEDOR' && !esPagoProveedor && (
+            <div className="space-y-2">
+              <Label>Proveedor *</Label>
               <Combobox
                 options={benesOpts}
                 value={beneficiarioId}
                 onChange={setBeneficiarioId}
-                placeholder="Sin beneficiario"
-                searchPlaceholder="Buscar beneficiario…"
-                allLabel="Sin beneficiario"
+                placeholder="Elegí proveedor…"
+                searchPlaceholder="Buscar proveedor…"
+                emptyText="No hay proveedores. Creá uno desde Proveedores."
               />
             </div>
-          </div>
+          )}
+          {tipoEgreso === 'GENERAL' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Categoría general *</Label>
+                <button
+                  type="button"
+                  onClick={() => setNuevaCatOpen(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva categoría
+                </button>
+              </div>
+              <Combobox
+                options={categoriasOpts}
+                value={categoriaId}
+                onChange={setCategoriaId}
+                placeholder="Elegí categoría…"
+                searchPlaceholder="Buscar categoría…"
+                emptyText="Sin categorías generales. Creá una con + Nueva categoría."
+              />
+            </div>
+          )}
 
           {/* Imputación a VEHÍCULOS: aparece cuando la categoría elegida
               tiene flag vinculadaVehiculo (Seguro, Patentes, Rentas automotor,
@@ -746,44 +789,18 @@ export function NuevoEgresoDialog({
           </div>
           )}
 
-          {!ocultarCategoria && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Categoría</Label>
-                <button
-                  type="button"
-                  onClick={() => setNuevaCatOpen(true)}
-                  className="text-xs text-primary hover:underline"
-                >
-                  + Nueva categoría
-                </button>
-              </div>
-              <Combobox
-                options={categoriasOpts}
-                value={categoriaId}
-                onChange={(v) => {
-                  setCategoriaId(v);
-                  const nueva = categorias.find((c) => c.id === v);
-                  if (nueva?.codigo === 'PREST_EMP' && beneficiarioSel?.tipo !== 'EMPLEADO') {
-                    setBeneficiarioId('');
-                  }
-                }}
-                placeholder="Sin categoría"
-                searchPlaceholder="Buscar categoría…"
-                allLabel="Sin categoría"
-              />
-              {esPrestamoEmpleado && (
-                <p className="text-xs text-warning">
-                  Se va a crear un préstamo al empleado con saldo = monto. Se descontará en
-                  liquidaciones futuras. Imputar a "Gastos generales" o "Varios".
-                </p>
-              )}
-              {prestamoRequiereEmpleado && (
-                <p className="text-xs text-danger">
-                  Elegí un empleado (categoría "Préstamos a empleados" requiere beneficiario tipo EMPLEADO).
-                </p>
-              )}
-            </div>
+          {/* Warnings de préstamo a empleado — se mantienen por si en el
+              futuro habilitamos egreso tipo=Préstamo dentro de "General" */}
+          {esPrestamoEmpleado && (
+            <p className="text-xs text-warning">
+              Se va a crear un préstamo al empleado con saldo = monto. Se descontará en
+              liquidaciones futuras.
+            </p>
+          )}
+          {prestamoRequiereEmpleado && (
+            <p className="text-xs text-danger">
+              Elegí un empleado (categoría "Préstamos a empleados" requiere beneficiario tipo EMPLEADO).
+            </p>
           )}
 
           <div className="space-y-2">
