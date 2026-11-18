@@ -499,26 +499,21 @@ export function NuevoEgresoDialog({
                   Proveedor (desde el detalle)
                 </div>
               ) : (
-                <div className="flex gap-1">
-                  {(['SERVICIO', 'PROVEEDOR', 'GENERAL'] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setTipoEgreso(t);
-                        setCategoriaId('');
-                        setBeneficiarioId('');
-                      }}
-                      className={`flex-1 h-10 rounded-md text-sm border transition-colors ${
-                        tipoEgreso === t
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'border-border hover:bg-muted/5'
-                      }`}
-                    >
-                      {t === 'SERVICIO' ? 'Servicio' : t === 'PROVEEDOR' ? 'Proveedor' : 'General'}
-                    </button>
-                  ))}
-                </div>
+                <Combobox
+                  options={[
+                    { value: 'SERVICIO', label: 'Servicio', hint: 'EPEC, Rentas, Seguros, etc.' },
+                    { value: 'PROVEEDOR', label: 'Proveedor', hint: 'Casa Santos, Prolectric…' },
+                    { value: 'GENERAL', label: 'General', hint: 'Sin categoría específica' },
+                  ]}
+                  value={tipoEgreso}
+                  onChange={(v) => {
+                    setTipoEgreso(v as TipoEgreso | '');
+                    setCategoriaId('');
+                    setBeneficiarioId('');
+                  }}
+                  placeholder="Elegí tipo…"
+                  searchPlaceholder="Buscar tipo…"
+                />
               )}
             </div>
           </div>
