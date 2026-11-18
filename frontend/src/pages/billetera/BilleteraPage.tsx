@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cajasService } from '@/services/cajasService';
 import { obrasService } from '@/services/obrasService';
 import { categoriasService } from '@/services/categoriasService';
+import { beneficiariosService } from '@/services/beneficiariosService';
 import {
   movimientosService,
   type EstadoMovimiento,
@@ -70,6 +71,7 @@ export function BilleteraPage() {
   const [tipo, setTipo] = useState<TipoMovimiento | ''>('');
   const [obraId, setObraId] = useState<string>('');
   const [categoriaId, setCategoriaId] = useState<string>('');
+  const [beneficiarioId, setBeneficiarioId] = useState<string>('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -102,10 +104,14 @@ export function BilleteraPage() {
     queryKey: ['categorias', 'activas'],
     queryFn: () => categoriasService.list(true),
   });
+  const { data: benes = [] } = useQuery({
+    queryKey: ['beneficiarios', { activo: true }],
+    queryFn: () => beneficiariosService.list({ activo: true }),
+  });
   const { data: listado, isLoading: loadingMovs } = useQuery({
     queryKey: [
       'movimientos',
-      { cajaId, tipo, obraId, categoriaId, desde, hasta, q, page, pageSize },
+      { cajaId, tipo, obraId, categoriaId, beneficiarioId, desde, hasta, q, page, pageSize },
     ],
     queryFn: () =>
       movimientosService.list({
@@ -113,6 +119,7 @@ export function BilleteraPage() {
         tipo: tipo || undefined,
         obraId: obraId || undefined,
         categoriaId: categoriaId || undefined,
+        beneficiarioId: beneficiarioId || undefined,
         desde,
         hasta,
         q: q || undefined,
@@ -124,7 +131,7 @@ export function BilleteraPage() {
   // Reset a página 1 al cambiar cualquier filtro
   useEffect(() => {
     setPage(1);
-  }, [cajaId, tipo, obraId, categoriaId, desde, hasta, q, pageSize]);
+  }, [cajaId, tipo, obraId, categoriaId, beneficiarioId, desde, hasta, q, pageSize]);
 
   // ---------- Totales ----------
   const totales = useMemo(() => {
@@ -369,7 +376,7 @@ export function BilleteraPage() {
             >
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(tipo || obraId || categoriaId || q) && (
+              {(tipo || obraId || categoriaId || beneficiarioId || q) && (
                 <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
               )}
             </Button>
@@ -410,6 +417,16 @@ export function BilleteraPage() {
                 searchPlaceholder="Buscar categoría…"
                 emptyText="Ninguna categoría coincide"
               />
+              <Combobox
+                size="sm"
+                className="w-full lg:w-52"
+                options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
+                value={beneficiarioId}
+                onChange={setBeneficiarioId}
+                allLabel="Proveedor / origen"
+                searchPlaceholder="Buscar…"
+                emptyText="Sin coincidencias"
+              />
               <div className="relative col-span-2 sm:col-span-3 lg:col-span-1">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
                 <Input
@@ -420,7 +437,7 @@ export function BilleteraPage() {
                   className="pl-7 h-8 text-xs w-full lg:w-60"
                 />
               </div>
-              {(tipo || obraId || categoriaId || q) && (
+              {(tipo || obraId || categoriaId || beneficiarioId || q) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -429,6 +446,7 @@ export function BilleteraPage() {
                     setTipo('');
                     setObraId('');
                     setCategoriaId('');
+                    setBeneficiarioId('');
                     setQ('');
                   }}
                 >
@@ -585,12 +603,15 @@ export function BilleteraPage() {
         <FiltrosMovimientosMobile
           obras={obras}
           categorias={categorias}
+          benes={benes}
           tipo={tipo}
           setTipo={setTipo}
           obraId={obraId}
           setObraId={setObraId}
           categoriaId={categoriaId}
           setCategoriaId={setCategoriaId}
+          beneficiarioId={beneficiarioId}
+          setBeneficiarioId={setBeneficiarioId}
           q={q}
           setQ={setQ}
           onClose={() => setOpenFiltrosMovsMobile(false)}
@@ -674,24 +695,30 @@ function FiltrosGlobalesMobile({
 function FiltrosMovimientosMobile({
   obras,
   categorias,
+  benes,
   tipo,
   setTipo,
   obraId,
   setObraId,
   categoriaId,
   setCategoriaId,
+  beneficiarioId,
+  setBeneficiarioId,
   q,
   setQ,
   onClose,
 }: {
   obras: Array<{ id: string; nombre: string; tipo: string }>;
   categorias: Array<{ id: string; codigo: string; nombre: string }>;
+  benes: Array<{ id: string; nombre: string; tipo: string }>;
   tipo: TipoMovimiento | '';
   setTipo: (v: TipoMovimiento | '') => void;
   obraId: string;
   setObraId: (v: string) => void;
   categoriaId: string;
   setCategoriaId: (v: string) => void;
+  beneficiarioId: string;
+  setBeneficiarioId: (v: string) => void;
   q: string;
   setQ: (v: string) => void;
   onClose: () => void;
@@ -736,10 +763,20 @@ function FiltrosMovimientosMobile({
             />
           </div>
           <div className="space-y-2">
+            <Label>Proveedor / origen</Label>
+            <Combobox
+              options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
+              value={beneficiarioId}
+              onChange={setBeneficiarioId}
+              allLabel="Todos"
+              searchPlaceholder="Buscar…"
+            />
+          </div>
+          <div className="space-y-2">
             <Label>Buscar en descripción</Label>
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Texto libre…" />
           </div>
-          {(tipo || obraId || categoriaId || q) && (
+          {(tipo || obraId || categoriaId || beneficiarioId || q) && (
             <Button
               variant="outline"
               className="w-full"
@@ -747,6 +784,7 @@ function FiltrosMovimientosMobile({
                 setTipo('');
                 setObraId('');
                 setCategoriaId('');
+                setBeneficiarioId('');
                 setQ('');
               }}
             >

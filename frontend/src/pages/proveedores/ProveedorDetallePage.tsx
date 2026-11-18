@@ -28,10 +28,20 @@ import { formatearFecha, formatearMonto } from '@/lib/formatters';
 import { CargarResumenDialog } from './CargarResumenDialog';
 
 /**
- * Detalle de proveedor + cuenta corriente. Tres secciones:
- * 1. Resumen actual con saldos por obra.
- * 2. Historial de pagos (reutiliza el MovimientoDetalleDialog existente).
- * 3. Resúmenes históricos (expandible) con opción de eliminar el más reciente.
+ * Feature flag: la cuenta corriente (resúmenes cargados + saldo por obra +
+ * resúmenes históricos) queda OCULTA hasta que Dani consiga secretaria que
+ * cargue los resúmenes. Reunión 18/11: "los resúmenes no coinciden con los
+ * pagos (pagos postergados, cheques por montos distintos). Lleva la previsión
+ * en su planilla". Cambiar a true para volver a habilitar todo.
+ */
+const MOSTRAR_CTA_CTE = false;
+
+/**
+ * Detalle de proveedor. Secciones (según feature flag):
+ * - MOSTRAR_CTA_CTE=true: resumen actual + saldo por obra + resúmenes
+ *   históricos + historial de pagos.
+ * - MOSTRAR_CTA_CTE=false (default): sólo header + botón "Registrar pago"
+ *   + historial de pagos. Lo que necesita Dani hoy.
  */
 export function ProveedorDetallePage() {
   const { id } = useParams<{ id: string }>();
@@ -103,50 +113,63 @@ export function ProveedorDetallePage() {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-muted uppercase tracking-wide">Saldo actual</div>
-            <div
-              className={`text-3xl font-bold num ${
-                saldoNum > 0.01
-                  ? 'text-danger'
-                  : saldoNum < -0.01
-                    ? 'text-success'
-                    : 'text-muted'
-              }`}
-            >
-              {formatearMonto(saldoNum, 'ARS')}
-            </div>
-            {data.ultimoResumen ? (
-              <div className="text-[11px] text-muted">
-                al {formatearFecha(data.ultimoResumen.fecha)} ·{' '}
-                {formatearMonto(data.ultimoResumen.montoTotal, 'ARS')} − pagos posteriores
-              </div>
+            {MOSTRAR_CTA_CTE ? (
+              <>
+                <div className="text-xs text-muted uppercase tracking-wide">Saldo actual</div>
+                <div
+                  className={`text-3xl font-bold num ${
+                    saldoNum > 0.01
+                      ? 'text-danger'
+                      : saldoNum < -0.01
+                        ? 'text-success'
+                        : 'text-muted'
+                  }`}
+                >
+                  {formatearMonto(saldoNum, 'ARS')}
+                </div>
+                {data.ultimoResumen ? (
+                  <div className="text-[11px] text-muted">
+                    al {formatearFecha(data.ultimoResumen.fecha)} ·{' '}
+                    {formatearMonto(data.ultimoResumen.montoTotal, 'ARS')} − pagos posteriores
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-warning">
+                    Sin resumen cargado · el saldo es solo pagos hechos
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="text-[11px] text-warning">
-                Sin resumen cargado · el saldo es solo pagos hechos
-              </div>
+              <>
+                <div className="text-xs text-muted uppercase tracking-wide">Pagos</div>
+                <div className="text-2xl font-bold num text-muted">
+                  {data.pagos.length}
+                </div>
+              </>
             )}
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
           <Button onClick={() => setNuevoPagoOpen(true)}>
             <Wallet className="h-4 w-4 mr-1" />
-            Nuevo pago
+            Registrar pago
           </Button>
-          <Button variant="outline" onClick={() => setCargarResumenOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Cargar nuevo resumen
-          </Button>
+          {MOSTRAR_CTA_CTE && (
+            <Button variant="outline" onClick={() => setCargarResumenOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Cargar nuevo resumen
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Sección 1: Saldos por obra (del último resumen − pagos posteriores) */}
-      {!data.ultimoResumen && (
+      {MOSTRAR_CTA_CTE && !data.ultimoResumen && (
         <div className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm">
           <strong>Sin resumen cargado.</strong> Para ver el saldo real por obra, cargá el primer
           resumen que te mande el proveedor con "Cargar nuevo resumen".
         </div>
       )}
-      {data.ultimoResumen && (
+      {MOSTRAR_CTA_CTE && data.ultimoResumen && (
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div>
@@ -267,7 +290,8 @@ export function ProveedorDetallePage() {
         </Table>
       </section>
 
-      {/* Sección 3: Resúmenes históricos (colapsable) */}
+      {/* Sección 3: Resúmenes históricos (colapsable) — oculta por feature flag */}
+      {MOSTRAR_CTA_CTE && (
       <section className="rounded-lg border border-border bg-card overflow-hidden">
         <button
           type="button"
@@ -345,6 +369,7 @@ export function ProveedorDetallePage() {
           </Table>
         )}
       </section>
+      )}
 
       {/* Dialogs */}
       {cargarResumenOpen && (
