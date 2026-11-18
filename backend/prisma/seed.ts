@@ -103,19 +103,35 @@ const CATEGORIAS_EMPLEADO = [
   { codigo: 'AYU', nombre: 'Ayudante', jornal: 50000, orden: 70 },
 ] as const;
 
+// Reunión Dani 18/11: cada categoría lleva su tipo (filtra qué aparece en
+// el egreso según Servicio/Proveedor/General/etc.) y un flag
+// vinculadaVehiculo (solo SERVICIO) para habilitar la nómina de vehículos.
 const CATEGORIAS = [
-  { codigo: 'JORN', nombre: 'Jornales', orden: 10 },
-  { codigo: 'CONTR', nombre: 'Contratistas', orden: 20 },
-  { codigo: 'MAT', nombre: 'Materiales', orden: 30 },
-  { codigo: 'FLETE', nombre: 'Fletes', orden: 40 },
-  { codigo: 'COMB', nombre: 'Combustible', orden: 50 },
-  { codigo: 'PROF', nombre: 'Profesionales', orden: 60 },
-  { codigo: 'IMP', nombre: 'Impuestos', orden: 70 },
-  { codigo: 'SERV', nombre: 'Servicios', orden: 80 },
-  { codigo: 'GRAL', nombre: 'Gastos generales', orden: 90 },
-  { codigo: 'PREST_EMP', nombre: 'Préstamos a empleados', orden: 95 },
-  { codigo: 'PAGO_PROV', nombre: 'Pago a proveedor', orden: 98 },
-  { codigo: 'RET', nombre: 'Retiros', orden: 100 },
+  { codigo: 'JORN', nombre: 'Jornales', orden: 10, tipo: 'EMPLEADO' as const, vinculadaVehiculo: false },
+  { codigo: 'CONTR', nombre: 'Contratistas', orden: 20, tipo: 'PROVEEDOR' as const, vinculadaVehiculo: false },
+  { codigo: 'MAT', nombre: 'Materiales', orden: 30, tipo: 'PROVEEDOR' as const, vinculadaVehiculo: false },
+  { codigo: 'FLETE', nombre: 'Fletes', orden: 40, tipo: 'PROVEEDOR' as const, vinculadaVehiculo: false },
+  { codigo: 'COMB', nombre: 'Combustible', orden: 50, tipo: 'SERVICIO' as const, vinculadaVehiculo: true },
+  { codigo: 'PROF', nombre: 'Profesionales', orden: 60, tipo: 'PROVEEDOR' as const, vinculadaVehiculo: false },
+  { codigo: 'IMP', nombre: 'Impuestos', orden: 70, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'SERV', nombre: 'Servicios', orden: 80, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'GRAL', nombre: 'Gastos generales', orden: 90, tipo: 'GENERAL' as const, vinculadaVehiculo: false },
+  { codigo: 'PREST_EMP', nombre: 'Préstamos a empleados', orden: 95, tipo: 'EMPLEADO' as const, vinculadaVehiculo: false },
+  { codigo: 'PAGO_PROV', nombre: 'Pago a proveedor', orden: 98, tipo: 'PROVEEDOR' as const, vinculadaVehiculo: false },
+  { codigo: 'RET', nombre: 'Retiros', orden: 100, tipo: 'GENERAL' as const, vinculadaVehiculo: false },
+  // Categorías mencionadas por Dani (Rentas automotor, patentes, seguros,
+  // mecánica van vinculadas a vehículo; IVA, 931, expensas no).
+  { codigo: 'RENT_AUTO', nombre: 'Rentas – Automotor', orden: 110, tipo: 'SERVICIO' as const, vinculadaVehiculo: true },
+  { codigo: 'RENT_IIBB', nombre: 'Rentas – IIBB', orden: 115, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'MUNIC', nombre: 'Municipalidad', orden: 120, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'PATENTES', nombre: 'Patentes', orden: 125, tipo: 'SERVICIO' as const, vinculadaVehiculo: true },
+  { codigo: 'EXPENSAS', nombre: 'Expensas', orden: 130, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'SEGUROS', nombre: 'Seguros', orden: 135, tipo: 'SERVICIO' as const, vinculadaVehiculo: true },
+  { codigo: 'IVA', nombre: 'IVA', orden: 140, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'SUSS_931', nombre: '931 (SUSS)', orden: 145, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'MEC_GRAL', nombre: 'Mecánica general', orden: 150, tipo: 'SERVICIO' as const, vinculadaVehiculo: true },
+  { codigo: 'EPEC', nombre: 'EPEC', orden: 155, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
+  { codigo: 'ALQ_TODO', nombre: 'Alquilo Todo', orden: 160, tipo: 'SERVICIO' as const, vinculadaVehiculo: false },
 ] as const;
 
 const EMPRESAS = [
@@ -197,8 +213,18 @@ async function seedCategorias() {
   for (const cat of CATEGORIAS) {
     await prisma.categoriaGasto.upsert({
       where: { codigo: cat.codigo },
-      create: { codigo: cat.codigo, nombre: cat.nombre, orden: cat.orden, activo: true },
-      update: {},
+      create: {
+        codigo: cat.codigo,
+        nombre: cat.nombre,
+        orden: cat.orden,
+        activo: true,
+        tipo: cat.tipo,
+        vinculadaVehiculo: cat.vinculadaVehiculo,
+      },
+      // Al re-correr el seed, actualizamos tipo/flag para que categorías
+      // viejas que no los tenían queden bien clasificadas. Nombre y código
+      // no se pisan.
+      update: { tipo: cat.tipo, vinculadaVehiculo: cat.vinculadaVehiculo },
     });
   }
 }

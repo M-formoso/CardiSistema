@@ -33,6 +33,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     'contratos_cuotas:ver', 'contratos_cuotas:crear',
     'compromisos:ver', 'compromisos:crear',
     'proveedores:ver', 'proveedores:editar',
+    'vehiculos:ver', 'vehiculos:editar',
     'recibos:ver', 'recibos:generar',
 
     // Reportes
@@ -56,6 +57,7 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Set<string>> = {
     'contratos_cuotas:ver',
     'compromisos:ver',
     'proveedores:ver',
+    'vehiculos:ver',
     'recibos:ver',
     'reportes:ver',
   ]),

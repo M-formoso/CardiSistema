@@ -3,7 +3,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { CategoriasService } from './categorias.service';
-import { CreateAliasDto, CreateCategoriaDto, UpdateCategoriaDto } from './dto/categorias.dto';
+import {
+  CreateAliasDto,
+  CreateCategoriaDto,
+  FiltrosCategoriaDto,
+  UpdateCategoriaDto,
+} from './dto/categorias.dto';
 
 @Controller('categorias')
 export class CategoriasController {
@@ -11,8 +16,8 @@ export class CategoriasController {
 
   @Get()
   @RequirePermission('categorias', 'ver')
-  findAll(@Query('soloActivas') soloActivas?: string) {
-    return this.categorias.findAll(soloActivas === 'true');
+  findAll(@Query() filtros: FiltrosCategoriaDto) {
+    return this.categorias.findAll(filtros);
   }
 
   @Get(':id')

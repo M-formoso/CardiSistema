@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import type { CreateAliasDto, CreateCategoriaDto, UpdateCategoriaDto } from './dto/categorias.dto';
+import type {
+  CreateAliasDto,
+  CreateCategoriaDto,
+  FiltrosCategoriaDto,
+  UpdateCategoriaDto,
+} from './dto/categorias.dto';
 
 @Injectable()
 export class CategoriasService {
@@ -10,9 +16,15 @@ export class CategoriasService {
     private readonly audit: AuditoriaService,
   ) {}
 
-  findAll(soloActivas = false) {
+  findAll(filtros: FiltrosCategoriaDto = {}) {
+    const where: Prisma.CategoriaGastoWhereInput = {};
+    if (filtros.soloActivas) where.activo = true;
+    if (filtros.tipo) where.tipo = filtros.tipo;
+    if (filtros.vinculadaVehiculo !== undefined) {
+      where.vinculadaVehiculo = filtros.vinculadaVehiculo;
+    }
     return this.prisma.categoriaGasto.findMany({
-      where: soloActivas ? { activo: true } : undefined,
+      where,
       orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
       include: { subcategorias: { orderBy: { orden: 'asc' } }, aliases: true },
     });

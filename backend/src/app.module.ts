@@ -30,6 +30,7 @@ import { ProveedoresModule } from './modules/proveedores/proveedores.module';
 import { RecibosModule } from './modules/recibos/recibos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
+import { VehiculosModule } from './modules/vehiculos/vehiculos.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
     ContratosCuotasModule,
     CompromisosModule,
     ProveedoresModule,
+    VehiculosModule,
     // Reportes
     ReportesModule,
     // Administración

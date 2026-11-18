@@ -49,7 +49,22 @@ enum TipoBeneficiario {
   CONTRATISTA
   PROVEEDOR
   PROFESIONAL
+  /// Empresas que NOS pagan (Grupo Fonte, Marcelo Picardi, Astori, etc.).
+  /// Reunión Dani 18/11: separa el "Origen" de un ingreso o cheque recibido
+  /// de los empleados, que confunden la lista.
+  EMPRESA_PAGADORA
   OTRO
+}
+
+/// Clasifica una CategoriaGasto para filtrar en el flujo del egreso.
+/// Reunión Dani 18/11: elegimos tipo primero (Servicio / Proveedor / etc.)
+/// y luego solo aparecen las categorías de ese tipo.
+enum TipoCategoria {
+  INGRESO
+  SERVICIO
+  PROVEEDOR
+  EMPLEADO
+  GENERAL
 }
 
 enum TipoCaja {
@@ -262,6 +277,8 @@ model Usuario {
   migracionLotesCreados       MigracionLote[]           @relation("LoteCreadoPor")
   resumenesProveedorCreados      ProveedorResumen[]     @relation("ResumenProveedorCreadoPor")
   resumenesProveedorActualizados ProveedorResumen[]     @relation("ResumenProveedorActualizadoPor")
+  vehiculosCreados               Vehiculo[]             @relation("VehiculoCreadoPor")
+  vehiculosActualizados          Vehiculo[]             @relation("VehiculoActualizadoPor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -599,6 +616,54 @@ model PrestamoAplicacion {
 }
 
 // =============================================================
+// VEHÍCULOS
+// =============================================================
+
+/// Reunión Dani 18/11: nómina de vehículos con sus gastos. Seguro,
+/// patentes, rentas automotor y mecánica se pueden imputar a uno o varios
+/// vehículos (ej: seguro mensual repartido entre 3). La categoría del
+/// servicio tiene que tener `vinculadaVehiculo=true` para que aparezca la
+/// nómina en el egreso.
+model Vehiculo {
+  id            String  @id @default(uuid())
+  nombre        String // "Toyota Hilux 2020"
+  modelo        String?
+  patente       String  @unique
+  observaciones String?
+  activo        Boolean @default(true)
+
+  movimientos MovimientoVehiculo[]
+
+  createdById String?
+  updatedById String?
+  createdBy   Usuario? @relation("VehiculoCreadoPor", fields: [createdById], references: [id])
+  updatedBy   Usuario? @relation("VehiculoActualizadoPor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+}
+
+/// Imputación N:N movimiento ↔ vehículo con monto por vehículo (igual al
+/// patrón de Imputacion por obra). Permite repartir un gasto de 60k en
+/// seguro entre 3 vehículos de 20k cada uno.
+model MovimientoVehiculo {
+  id           String  @id @default(uuid())
+  movimientoId String
+  vehiculoId   String
+  monto        Decimal @db.Decimal(14, 2)
+
+  movimiento Movimiento @relation(fields: [movimientoId], references: [id], onDelete: Cascade)
+  vehiculo   Vehiculo   @relation(fields: [vehiculoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([movimientoId, vehiculoId])
+  @@index([vehiculoId])
+}
+
+// =============================================================
 // PROVEEDORES Y CUENTA CORRIENTE
 // =============================================================
 
@@ -663,6 +728,11 @@ model CategoriaGasto {
   orden    Int     @default(0)
   activo   Boolean @default(true)
   parentId String? // si en el futuro se decide usar subcategorías
+  /// Reunión 18/11: filtrar categorías según el tipo elegido en el egreso.
+  tipo     TipoCategoria @default(GENERAL)
+  /// Si tipo=SERVICIO: indica que el pago se puede imputar a uno o varios
+  /// vehículos (seguro, patente, mecánica). Si false, se imputa a obras.
+  vinculadaVehiculo Boolean @default(false)
 
   parent        CategoriaGasto?  @relation("Subcategoria", fields: [parentId], references: [id])
   subcategorias CategoriaGasto[] @relation("Subcategoria")
@@ -802,6 +872,7 @@ model Movimiento {
   pagoLiquidacion     LiquidacionPago?
 
   imputaciones Imputacion[]
+  vehiculos    MovimientoVehiculo[]
 
   // Auditoría
   createdById String?
