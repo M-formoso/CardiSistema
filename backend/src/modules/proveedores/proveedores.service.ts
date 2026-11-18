@@ -100,9 +100,13 @@ export class ProveedoresService {
         (acc, pg) => acc + Number(pg.monto),
         0,
       );
+      // Sin resumen: saldo NO se puede calcular (el proveedor puede deber 1M
+      // y haber pagado 100; mostrar "-100" confunde). Lo marcamos como 0 y
+      // el frontend muestra el banner "Sin resumen cargado". Con resumen,
+      // saldoTotal = montoTotal del resumen - pagos posteriores.
       const saldoTotal = ultimoResumen
         ? Number(ultimoResumen.montoTotal) - sumaPagosPosteriores
-        : -sumaPagosPosteriores;
+        : 0;
       return {
         ...p,
         ultimoResumenFecha: ultimoResumen?.fecha ?? null,
@@ -170,9 +174,10 @@ export class ProveedoresService {
       (acc, pg) => acc + Number(pg.monto),
       0,
     );
+    // Sin resumen: no se puede calcular el saldo real (ver nota en findAll).
     const saldoTotal = ultimo
       ? Number(ultimo.montoTotal) - sumaPagosPosteriores
-      : -sumaPagosPosteriores;
+      : 0;
 
     // Saldos por obra: parto del último resumen y resto imputaciones posteriores
     const saldosPorObraMap = new Map<string, { obraId: string; nombre: string; resumen: number; pagado: number }>();

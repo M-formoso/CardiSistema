@@ -67,7 +67,15 @@ export class MovimientosService {
       };
     }
     if (filtros.obraId) {
-      where.imputaciones = { some: { obraId: filtros.obraId } };
+      // El movimiento puede estar vinculado a una obra de dos formas:
+      // - EGRESO: una o más Imputacion con obraId
+      // - INGRESO: obraIngresoId directo (sin imputaciones)
+      // Para que el filtro combine bien con otros (ej. beneficiarioId=Casa Santo
+      // + obraId=Droma), usamos OR:
+      where.OR = [
+        { imputaciones: { some: { obraId: filtros.obraId } } },
+        { obraIngresoId: filtros.obraId },
+      ];
     }
     if (filtros.q) {
       where.descripcion = { contains: filtros.q, mode: 'insensitive' };

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Textarea } from '@/components/ui/textarea';
@@ -259,17 +260,13 @@ export function MovimientoEditarDialog({
                         placeholder="Elegí obra…"
                         searchPlaceholder="Buscar obra…"
                       />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                      <MoneyInput
                         value={l.monto}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setLineas((prev) =>
-                            prev.map((x, i) => (i === idx ? { ...x, monto: e.target.value } : x)),
+                            prev.map((x, i) => (i === idx ? { ...x, monto: v } : x)),
                           )
                         }
-                        className="num text-right"
                       />
                       {lineas.length > 1 && (
                         <Button

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
@@ -159,31 +160,19 @@ export function CambioMonedaDialog({
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label>Monto origen ({origen?.moneda ?? '—'}) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={montoOrigen}
-                onChange={(e) => setMontoOrigen(e.target.value)}
-              />
+              <MoneyInput value={montoOrigen} onChange={setMontoOrigen} />
             </div>
             <div className="space-y-2">
               <Label>Cotización (ARS por 1 USD) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={cotizacion}
-                onChange={(e) => setCotizacion(e.target.value)}
-              />
+              <MoneyInput value={cotizacion} onChange={setCotizacion} />
             </div>
             <div className="space-y-2">
               <Label>Monto destino ({destino?.moneda ?? '—'})</Label>
-              <Input
-                type="text"
+              <MoneyInput
                 value={montoDestino > 0 ? montoDestino.toFixed(2) : ''}
+                onChange={() => {}}
                 readOnly
-                className="bg-muted/10 num"
+                className="bg-muted/10"
               />
             </div>
           </div>

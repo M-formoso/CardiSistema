@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
@@ -126,14 +127,7 @@ export function TransferirDialog({
           </div>
           <div className="space-y-2">
             <Label>Monto ({origen?.moneda ?? '—'}) *</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              required
-            />
+            <MoneyInput value={monto} onChange={setMonto} required />
           </div>
           <div className="space-y-2">
             <Label>Descripción (opcional)</Label>

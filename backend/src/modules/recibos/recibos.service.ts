@@ -380,18 +380,22 @@ export class RecibosService {
       .lineWidth(0.4)
       .stroke();
 
-    // Total (derecha, prominente)
+    // Total (derecha, prominente). El ancho de la columna del monto se
+    // amplía para que no se desborde con montos grandes (10M+). El label
+    // "TOTAL A PAGAR" se corre a la izquierda para dejar espacio.
+    const totalAncho = 160;
+    const totalX = x + ancho - padX - totalAncho;
     doc
       .font('Helvetica')
       .fontSize(9)
       .fillColor(MUTED)
-      .text('TOTAL A PAGAR', colVal, pieY + 2, { width: 60, align: 'right' });
+      .text('TOTAL A PAGAR', totalX - 95, pieY + 4, { width: 90, align: 'right' });
     doc
       .font('Helvetica-Bold')
-      .fontSize(14)
+      .fontSize(13)
       .fillColor(PRIMARY)
-      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), colMonto - 10, pieY + 10, {
-        width: colMontoW + 10,
+      .text(formatearMonto(item.aPagar.toString(), Moneda.ARS), totalX, pieY + 10, {
+        width: totalAncho,
         align: 'right',
       });
 

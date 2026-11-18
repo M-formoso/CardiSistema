@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
@@ -63,6 +64,17 @@ export function NuevoIngresoDialog({
     () => cajas.map((c) => ({ value: c.id, label: c.nombre, hint: `${c.moneda} · ${c.tipo}` })),
     [cajas],
   );
+
+  // Autocompletar medio de pago según tipo de caja elegida (Dani: "si elijo
+  // Efectivo, el medio queda Efectivo; si Transferencia, Transferencia"). El
+  // usuario puede cambiarlo manualmente después si quiere.
+  function onCajaChange(nuevoId: string) {
+    setCajaId(nuevoId);
+    const nuevaCaja = cajas.find((c) => c.id === nuevoId);
+    if (nuevaCaja?.tipo === 'CHEQUES_TERCEROS') setMedioPago('CHEQUE_TERCERO');
+    else if (nuevaCaja?.tipo === 'EFECTIVO') setMedioPago('EFECTIVO');
+    else if (nuevaCaja?.tipo === 'BANCO') setMedioPago('TRANSFERENCIA');
+  }
   const benesOpts = useMemo<ComboboxOption[]>(
     () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
     [benes],
@@ -129,7 +141,7 @@ export function NuevoIngresoDialog({
               <Combobox
                 options={cajasOpts}
                 value={cajaId}
-                onChange={setCajaId}
+                onChange={onCajaChange}
                 placeholder="Elegí caja…"
                 searchPlaceholder="Buscar caja…"
               />
@@ -150,14 +162,7 @@ export function NuevoIngresoDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Monto ({moneda}) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                required
-              />
+              <MoneyInput value={monto} onChange={setMonto} required />
             </div>
             <div className="space-y-2">
               <Label>Origen (quién envía)</Label>

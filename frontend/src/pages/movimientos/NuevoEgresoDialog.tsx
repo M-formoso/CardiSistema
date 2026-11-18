@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
@@ -227,11 +228,10 @@ export function NuevoEgresoDialog({
     setCajaId(nuevoId);
     setChequeId('');
     const nuevaCaja = cajas.find((c) => c.id === nuevoId);
-    if (nuevaCaja?.tipo === 'CHEQUES_TERCEROS') {
-      setMedioPago('CHEQUE_TERCERO');
-    } else if (medioPago === 'CHEQUE_TERCERO') {
-      setMedioPago('EFECTIVO');
-    }
+    // Autocompletar medio de pago según tipo de caja (Dani pidió no repetir la carga)
+    if (nuevaCaja?.tipo === 'CHEQUES_TERCEROS') setMedioPago('CHEQUE_TERCERO');
+    else if (nuevaCaja?.tipo === 'EFECTIVO') setMedioPago('EFECTIVO');
+    else if (nuevaCaja?.tipo === 'BANCO') setMedioPago('TRANSFERENCIA');
   }
 
   // Al elegir un cheque: setear monto del egreso = monto del cheque, y auto-
@@ -409,12 +409,9 @@ export function NuevoEgresoDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Monto total ({moneda}) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
+              <MoneyInput
                 value={monto}
-                onChange={(e) => setMonto(e.target.value)}
+                onChange={setMonto}
                 required
                 readOnly={modoCheque && !!chequeId}
                 title={
@@ -497,14 +494,10 @@ export function NuevoEgresoDialog({
                         searchPlaceholder="Buscar obra…"
                       />
                       {inputEditableSiempre ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <MoneyInput
                           placeholder="Monto"
                           value={l.monto}
-                          onChange={(e) => updateLinea(idx, { monto: e.target.value })}
-                          className="num text-right"
+                          onChange={(v) => updateLinea(idx, { monto: v })}
                         />
                       ) : (
                         <div className="text-sm text-muted italic text-right pr-2 num">
