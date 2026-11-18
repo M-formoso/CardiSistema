@@ -20,7 +20,7 @@ import {
   type CreateChequeInput,
   type TipoCheque,
 } from '@/services/chequesService';
-import { beneficiariosService } from '@/services/beneficiariosService';
+import { OrigenPicker } from '@/components/OrigenPicker';
 import { cajasService } from '@/services/cajasService';
 import { obrasService } from '@/services/obrasService';
 import { cn } from '@/lib/utils';
@@ -64,10 +64,6 @@ export function NuevoChequeDialog({
   const [cajaIngresoId, setCajaIngresoId] = useState('');
   const [obraIngresoId, setObraIngresoId] = useState('');
 
-  const { data: benes = [] } = useQuery({
-    queryKey: ['beneficiarios', { activo: true }],
-    queryFn: () => beneficiariosService.list({ activo: true }),
-  });
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
     queryFn: () => cajasService.list(true),
@@ -83,10 +79,6 @@ export function NuevoChequeDialog({
     [cajas, moneda],
   );
 
-  const benesOpts = useMemo<ComboboxOption[]>(
-    () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
-    [benes],
-  );
   const cajasChequesOpts = useMemo<ComboboxOption[]>(
     () => cajasCheques.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda })),
     [cajasCheques],
@@ -217,14 +209,10 @@ export function NuevoChequeDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Beneficiario (opcional)</Label>
-            <Combobox
-              options={benesOpts}
+            <OrigenPicker
               value={beneficiarioId}
               onChange={setBeneficiarioId}
-              placeholder="Sin asignar"
-              searchPlaceholder="Buscar beneficiario…"
-              allLabel="Sin asignar"
+              label="Origen (quién nos entrega el cheque)"
             />
           </div>
 

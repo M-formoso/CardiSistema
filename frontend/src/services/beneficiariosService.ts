@@ -1,6 +1,12 @@
 import { apiClient } from '@/lib/apiClient';
 
-export type TipoBeneficiario = 'EMPLEADO' | 'CONTRATISTA' | 'PROVEEDOR' | 'PROFESIONAL' | 'OTRO';
+export type TipoBeneficiario =
+  | 'EMPLEADO'
+  | 'CONTRATISTA'
+  | 'PROVEEDOR'
+  | 'PROFESIONAL'
+  | 'EMPRESA_PAGADORA'
+  | 'OTRO';
 
 export type Beneficiario = {
   id: string;

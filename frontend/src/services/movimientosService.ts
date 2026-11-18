@@ -43,6 +43,11 @@ export type Movimiento = {
     porcentaje: string;
     obra: { nombre: string };
   }>;
+  vehiculos?: Array<{
+    vehiculoId: string;
+    monto: string;
+    vehiculo: { id: string; nombre: string; patente: string };
+  }>;
   obraIngreso?: { id: string; nombre: string } | null;
   cheque?: {
     id: string;
@@ -81,6 +86,8 @@ export type FiltrosMovimientos = {
   pageSize?: number;
 };
 
+export type VehiculoInput = { vehiculoId: string; monto: number };
+
 export type CrearEgresoInput = {
   fecha: string;
   cajaId: string;
@@ -91,7 +98,10 @@ export type CrearEgresoInput = {
   descripcion?: string;
   chequeId?: string;
   cotizacion?: number;
-  imputaciones: ImputacionInput[];
+  // Uno de los dos: imputación a obras (comportamiento normal) o a vehículos
+  // (cuando la categoría de servicio tiene flag vinculadaVehiculo).
+  imputaciones?: ImputacionInput[];
+  vehiculos?: VehiculoInput[];
 };
 
 export type CrearIngresoInput = {

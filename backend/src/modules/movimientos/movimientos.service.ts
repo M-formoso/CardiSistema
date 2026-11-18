@@ -107,6 +107,7 @@ export class MovimientosService {
         beneficiario: true,
         categoria: true,
         imputaciones: { include: { obra: true } },
+        vehiculos: { include: { vehiculo: { select: { id: true, nombre: true, patente: true } } } },
         obraIngreso: { select: { id: true, nombre: true } },
         cheque: true,
         recibo: true,
@@ -129,9 +130,44 @@ export class MovimientosService {
       dto.cotizacionTipo,
     );
 
-    // Valida imputaciones ANTES de abrir la transacción.
-    const imputaciones = repartirMonto(dto.monto, dto.imputaciones);
-    await this.validarObrasActivas(imputaciones.map((i) => i.obraId));
+    // El egreso se puede imputar a OBRAS (caso normal) o a VEHÍCULOS (cuando
+    // la categoría de servicio tiene flag vinculadaVehiculo). Nunca a los
+    // dos a la vez. El DTO.refine garantiza que haya al menos uno.
+    const imputarAVehiculos = !!dto.vehiculos && dto.vehiculos.length > 0;
+
+    const imputaciones = imputarAVehiculos
+      ? []
+      : repartirMonto(dto.monto, dto.imputaciones ?? []);
+    if (imputaciones.length > 0) {
+      await this.validarObrasActivas(imputaciones.map((i) => i.obraId));
+    }
+
+    // Validar imputación a vehículos: existencia + que sume exacto al monto
+    if (imputarAVehiculos && dto.vehiculos) {
+      const ids = dto.vehiculos.map((v) => v.vehiculoId);
+      const unicos = new Set(ids);
+      if (unicos.size !== ids.length) {
+        throw new BadRequestException('Vehículo repetido en la imputación');
+      }
+      const vehiculos = await this.prisma.vehiculo.findMany({
+        where: { id: { in: ids } },
+      });
+      if (vehiculos.length !== ids.length) {
+        throw new BadRequestException('Algún vehículo no existe');
+      }
+      const inactivos = vehiculos.filter((v) => !v.activo);
+      if (inactivos.length > 0) {
+        throw new BadRequestException(
+          `Vehículos inactivos: ${inactivos.map((v) => v.nombre).join(', ')}`,
+        );
+      }
+      const sumaVeh = dto.vehiculos.reduce((acc, v) => acc + v.monto, 0);
+      if (Math.abs(sumaVeh - dto.monto) > 0.01) {
+        throw new BadRequestException(
+          `La suma por vehículo (${sumaVeh.toFixed(2)}) debe ser igual al monto del egreso (${dto.monto.toFixed(2)})`,
+        );
+      }
+    }
 
     // Si el pago es con cheque de tercero, validar que el cheque esté en
     // cartera, que la moneda coincida con la caja y que el monto del egreso
@@ -216,6 +252,14 @@ export class MovimientosService {
               porcentaje: new Prisma.Decimal(i.porcentaje.toString()),
             })),
           },
+          vehiculos: imputarAVehiculos
+            ? {
+                create: (dto.vehiculos ?? []).map((v) => ({
+                  vehiculoId: v.vehiculoId,
+                  monto: new Prisma.Decimal(v.monto.toString()),
+                })),
+              }
+            : undefined,
         },
         include: { imputaciones: true, caja: true },
       });

@@ -12,21 +12,38 @@ const ImputacionInputSchema = z
     message: 'Cada imputación debe tener monto o porcentaje',
   });
 
-export const CrearEgresoSchema = z.object({
-  fecha: z.coerce.date(),
-  cajaId: z.string().uuid(),
+const VehiculoInputSchema = z.object({
+  vehiculoId: z.string().uuid(),
   monto: z.coerce.number().positive(),
-  medioPago: z.nativeEnum(MedioPago),
-  beneficiarioId: z.string().uuid().optional(),
-  categoriaId: z.string().uuid().optional(),
-  descripcion: z.string().max(1000).optional(),
-  chequeId: z.string().uuid().optional(),
-  // Cotización (si no se pasa, se resuelve server-side desde la última histórica)
-  cotizacion: z.coerce.number().positive().optional(),
-  cotizacionTipo: z.nativeEnum(CotizacionTipo).optional(),
-  // Imputación: al menos una línea. Si solo hay una, suma el total exacto.
-  imputaciones: z.array(ImputacionInputSchema).min(1),
 });
+
+export const CrearEgresoSchema = z
+  .object({
+    fecha: z.coerce.date(),
+    cajaId: z.string().uuid(),
+    monto: z.coerce.number().positive(),
+    medioPago: z.nativeEnum(MedioPago),
+    beneficiarioId: z.string().uuid().optional(),
+    categoriaId: z.string().uuid().optional(),
+    descripcion: z.string().max(1000).optional(),
+    chequeId: z.string().uuid().optional(),
+    // Cotización (si no se pasa, se resuelve server-side desde la última histórica)
+    cotizacion: z.coerce.number().positive().optional(),
+    cotizacionTipo: z.nativeEnum(CotizacionTipo).optional(),
+    // Imputación: al menos una línea. Si solo hay una, suma el total exacto.
+    // Para egresos con categoría vinculadaVehiculo=true, las imputaciones
+    // pueden estar vacías y en su lugar venir `vehiculos`.
+    imputaciones: z.array(ImputacionInputSchema).optional(),
+    // Reunión 18/11: cuando la categoría de SERVICIO tiene flag
+    // vinculadaVehiculo, el gasto se imputa a uno o varios vehículos (ej:
+    // seguro mensual repartido entre 3). La SUMA de los montos tiene que
+    // ser EXACTAMENTE igual al monto del egreso.
+    vehiculos: z.array(VehiculoInputSchema).optional(),
+  })
+  .refine(
+    (v) => (v.imputaciones && v.imputaciones.length > 0) || (v.vehiculos && v.vehiculos.length > 0),
+    { message: 'El egreso tiene que imputarse a obras o a vehículos' },
+  );
 export class CrearEgresoDto extends createZodDto(CrearEgresoSchema) {}
 
 export const CrearIngresoSchema = z.object({

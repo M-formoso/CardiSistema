@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/dialog';
 import { movimientosService, type MedioPago } from '@/services/movimientosService';
 import { cajasService } from '@/services/cajasService';
-import { beneficiariosService } from '@/services/beneficiariosService';
 import { obrasService } from '@/services/obrasService';
 import { categoriasService } from '@/services/categoriasService';
+import { OrigenPicker } from '@/components/OrigenPicker';
 
 export function NuevoIngresoDialog({
   open,
@@ -43,10 +43,6 @@ export function NuevoIngresoDialog({
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
     queryFn: () => cajasService.list(true),
-  });
-  const { data: benes = [] } = useQuery({
-    queryKey: ['beneficiarios', { activo: true }],
-    queryFn: () => beneficiariosService.list({ activo: true }),
   });
   const { data: obras = [] } = useQuery({
     queryKey: ['obras', { activo: true }],
@@ -75,10 +71,6 @@ export function NuevoIngresoDialog({
     else if (nuevaCaja?.tipo === 'EFECTIVO') setMedioPago('EFECTIVO');
     else if (nuevaCaja?.tipo === 'BANCO') setMedioPago('TRANSFERENCIA');
   }
-  const benesOpts = useMemo<ComboboxOption[]>(
-    () => benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo })),
-    [benes],
-  );
   const obrasOpts = useMemo<ComboboxOption[]>(
     () => obras.map((o) => ({ value: o.id, label: o.nombre })),
     [obras],
@@ -165,15 +157,7 @@ export function NuevoIngresoDialog({
               <MoneyInput value={monto} onChange={setMonto} required />
             </div>
             <div className="space-y-2">
-              <Label>Origen (quién envía)</Label>
-              <Combobox
-                options={benesOpts}
-                value={beneficiarioId}
-                onChange={setBeneficiarioId}
-                placeholder="Sin origen"
-                searchPlaceholder="Buscar…"
-                allLabel="Sin origen"
-              />
+              <OrigenPicker value={beneficiarioId} onChange={setBeneficiarioId} />
             </div>
           </div>
 

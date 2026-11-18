@@ -23,9 +23,15 @@ import { obrasService } from '@/services/obrasService';
 import { beneficiariosService } from '@/services/beneficiariosService';
 import { categoriasService, type Categoria } from '@/services/categoriasService';
 import { chequesService } from '@/services/chequesService';
+import { vehiculosService } from '@/services/vehiculosService';
 import { formatearFecha, formatearMonto } from '@/lib/formatters';
 
 type Linea = { obraId: string; monto: string };
+type LineaVehiculo = { vehiculoId: string; monto: string };
+
+/** Tipos de egreso (reunión Dani 18/11): primero se elige el tipo, después
+ *  se filtran las categorías y se decide cómo imputar (obras o vehículos). */
+type TipoEgreso = 'SERVICIO' | 'PROVEEDOR' | 'GENERAL';
 
 export type ImputacionSugerida = {
   obraId: string;
@@ -79,6 +85,13 @@ export function NuevoEgresoDialog({
       : [{ obraId: '', monto: '' }],
   );
   const [chequeId, setChequeId] = useState('');
+  // Reunión Dani 18/11: tipo primero, después se filtran las categorías y la
+  // UI del reparto (obras vs vehículos). Si viene imputacionesSugeridas (pago
+  // a proveedor desde el detalle del proveedor), arrancamos en PROVEEDOR.
+  const [tipoEgreso, setTipoEgreso] = useState<TipoEgreso | ''>(
+    imputacionesSugeridas && imputacionesSugeridas.length > 0 ? 'PROVEEDOR' : '',
+  );
+  const [lineasVeh, setLineasVeh] = useState<LineaVehiculo[]>([]);
 
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
@@ -92,9 +105,18 @@ export function NuevoEgresoDialog({
     queryKey: ['beneficiarios', { activo: true }],
     queryFn: () => beneficiariosService.list({ activo: true }),
   });
+  // Las categorías se filtran según el tipo de egreso elegido (reunión 18/11).
   const { data: categorias = [] } = useQuery({
-    queryKey: ['categorias', 'activas'],
-    queryFn: () => categoriasService.list(true),
+    queryKey: ['categorias', { tipo: tipoEgreso, soloActivas: true }],
+    queryFn: () =>
+      categoriasService.list({
+        soloActivas: true,
+        tipo: tipoEgreso || undefined,
+      }),
+  });
+  const { data: vehiculos = [] } = useQuery({
+    queryKey: ['vehiculos', { activo: true }],
+    queryFn: () => vehiculosService.list({ activo: true }),
   });
   const { data: chequesCartera = [] } = useQuery({
     queryKey: ['cheques', 'cartera'],
@@ -109,21 +131,33 @@ export function NuevoEgresoDialog({
     [chequesCartera, moneda],
   );
   const chequeSel = chequesDisponibles.find((c) => c.id === chequeId);
+  const categoriaSel = categorias.find((c) => c.id === categoriaId);
+  // Si la categoría elegida tiene flag vinculadaVehiculo (ej: Seguro, Rentas
+  // Automotor, Mecánica), el egreso se imputa a vehículos en vez de obras.
+  const modoVehiculos = categoriaSel?.vinculadaVehiculo === true;
   const totalNum = Number(monto) || 0;
   const sumaLineas = lineas.reduce((acc, l) => acc + (Number(l.monto) || 0), 0);
+  const sumaLineasVeh = lineasVeh.reduce((acc, l) => acc + (Number(l.monto) || 0), 0);
+  const diferenciaVeh = totalNum - sumaLineasVeh;
   const diferencia = totalNum - sumaLineas;
   const disponibleCheque = chequeSel ? Number(chequeSel.monto) - sumaLineas : 0;
 
-  const categoriaSel = categorias.find((c) => c.id === categoriaId);
   const esPrestamoEmpleado = categoriaSel?.codigo === 'PREST_EMP';
   const beneficiarioSel = benes.find((b) => b.id === beneficiarioId);
   const prestamoRequiereEmpleado =
     esPrestamoEmpleado && (!beneficiarioSel || beneficiarioSel.tipo !== 'EMPLEADO');
 
-  // Opciones de beneficiario: si es préstamo, solo empleados; si no, todos
-  const benesFiltrados = esPrestamoEmpleado
-    ? benes.filter((b) => b.tipo === 'EMPLEADO')
-    : benes;
+  // Opciones de beneficiario según tipo elegido (reunión 18/11):
+  //  - PROVEEDOR: solo tipo=PROVEEDOR
+  //  - SERVICIO/GENERAL: cualquiera (opcional)
+  //  - Préstamo a empleado: solo tipo=EMPLEADO
+  const benesFiltrados = useMemo(() => {
+    if (esPrestamoEmpleado) return benes.filter((b) => b.tipo === 'EMPLEADO');
+    if (tipoEgreso === 'PROVEEDOR') return benes.filter((b) => b.tipo === 'PROVEEDOR');
+    // Excluimos EMPRESA_PAGADORA y EMPLEADOS del general (son "origen" o
+    // tienen su propio flujo de liquidación)
+    return benes.filter((b) => b.tipo !== 'EMPRESA_PAGADORA' && b.tipo !== 'EMPLEADO');
+  }, [benes, esPrestamoEmpleado, tipoEgreso]);
 
   // En modo "pago a proveedor" (hay imputaciones sugeridas) el total del
   // egreso se calcula automáticamente como la suma de las líneas con monto >0,
@@ -138,8 +172,20 @@ export function NuevoEgresoDialog({
 
   const puedeEnviar = useMemo(() => {
     if (!cajaId || totalNum <= 0) return false;
+    // Tipo de egreso obligatorio (reunión 18/11), salvo cuando ya viene
+    // forzado por el flujo de pago a proveedor.
+    if (!tipoEgreso) return false;
     if (prestamoRequiereEmpleado) return false;
     if (modoCheque && !chequeId) return false;
+
+    // Modo vehículos: al menos una línea con vehículo+monto, suma = total
+    if (modoVehiculos) {
+      const conMonto = lineasVeh.filter((l) => l.vehiculoId && Number(l.monto) > 0);
+      if (conMonto.length === 0) return false;
+      const ids = conMonto.map((l) => l.vehiculoId);
+      if (new Set(ids).size !== ids.length) return false; // repetidos
+      return Math.abs(diferenciaVeh) < 0.01;
+    }
 
     // En modo proveedor, se aceptan líneas con monto 0 (= obras que no se
     // pagan esta vez). Al menos una línea con monto > 0 y obra, y la suma
@@ -156,8 +202,12 @@ export function NuevoEgresoDialog({
   }, [
     cajaId,
     totalNum,
+    tipoEgreso,
     lineas,
+    lineasVeh,
     diferencia,
+    diferenciaVeh,
+    modoVehiculos,
     prestamoRequiereEmpleado,
     modoCheque,
     chequeId,
@@ -166,8 +216,24 @@ export function NuevoEgresoDialog({
 
   const m = useMutation({
     mutationFn: () => {
-      // Para enviar: en modo proveedor se filtran las líneas con monto 0
-      // (obras que no se pagan ahora). En modo normal, se mandan todas.
+      if (modoVehiculos) {
+        // Modo vehículos: enviar `vehiculos` sin `imputaciones`
+        const vehiculosPayload = lineasVeh
+          .filter((l) => l.vehiculoId && Number(l.monto) > 0)
+          .map((l) => ({ vehiculoId: l.vehiculoId, monto: Number(l.monto) }));
+        return movimientosService.crearEgreso({
+          fecha,
+          cajaId,
+          monto: totalNum,
+          medioPago,
+          beneficiarioId: beneficiarioId || undefined,
+          categoriaId: categoriaId || undefined,
+          descripcion: descripcion.trim() || undefined,
+          chequeId: chequeId || undefined,
+          vehiculos: vehiculosPayload,
+        });
+      }
+      // Modo normal: imputación a obras
       let imputaciones: Array<{ obraId: string; monto: number }>;
       if (esPagoProveedor) {
         imputaciones = lineas
@@ -267,16 +333,18 @@ export function NuevoEgresoDialog({
     setLineas(lineas.map((l, i) => ({ ...l, monto: redondeadas[i].toFixed(2) })));
   }
 
-  // "Gasto general": reemplaza las líneas por una por cada obra activa, con
+  // "Gasto general": reemplaza las líneas por una por cada obra ACTIVA (estado
+  // = ACTIVA, no las pausadas/terminadas/en licitación — reunión 18/11), con
   // el monto total repartido en partes iguales. Útil para gastos como IPF
   // que afectan a toda la empresa, no a una obra en particular.
   function repartirEnTodasLasObras() {
-    if (obras.length === 0 || totalNum <= 0) return;
-    const partes = totalNum / obras.length;
-    const redondeadas = obras.map(() => Math.round(partes * 100) / 100);
+    const obrasActivas = obras.filter((o) => o.estado === 'ACTIVA');
+    if (obrasActivas.length === 0 || totalNum <= 0) return;
+    const partes = totalNum / obrasActivas.length;
+    const redondeadas = obrasActivas.map(() => Math.round(partes * 100) / 100);
     const suma = redondeadas.reduce((a, b) => a + b, 0);
     redondeadas[redondeadas.length - 1] += Math.round((totalNum - suma) * 100) / 100;
-    setLineas(obras.map((o, i) => ({ obraId: o.id, monto: redondeadas[i].toFixed(2) })));
+    setLineas(obrasActivas.map((o, i) => ({ obraId: o.id, monto: redondeadas[i].toFixed(2) })));
   }
 
   // Modo proveedor: lookup rápido obraId → saldoPendiente (del último resumen)
@@ -345,6 +413,46 @@ export function NuevoEgresoDialog({
           }}
           className="space-y-4"
         >
+          {/* Reunión Dani 18/11: primero se elige el TIPO de egreso. Según
+              el tipo se filtran las categorías disponibles. Si entramos desde
+              el detalle de un proveedor (esPagoProveedor), ya arranca en
+              PROVEEDOR y no mostramos el selector. */}
+          {!esPagoProveedor && (
+            <div className="rounded-md border border-border bg-muted/5 p-3">
+              <Label className="text-xs uppercase tracking-wide text-muted mb-2 block">
+                Tipo de egreso *
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {(['SERVICIO', 'PROVEEDOR', 'GENERAL'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setTipoEgreso(t);
+                      setCategoriaId(''); // reset categoría al cambiar tipo
+                    }}
+                    className={`px-4 py-2 rounded-md text-sm border transition-colors ${
+                      tipoEgreso === t
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-border hover:bg-muted/5'
+                    }`}
+                  >
+                    {t === 'SERVICIO' ? 'Servicio' : t === 'PROVEEDOR' ? 'Proveedor' : 'General'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted mt-2">
+                {tipoEgreso === 'SERVICIO' &&
+                  'EPEC, Rentas, Municipalidad, Seguros, Mecánica, etc. Si la categoría está vinculada a vehículos, el gasto se imputa a uno o varios vehículos.'}
+                {tipoEgreso === 'PROVEEDOR' &&
+                  'Pago a proveedor (Casa Santo, Prolectric, etc.) con reparto por obra.'}
+                {tipoEgreso === 'GENERAL' &&
+                  'Gasto general sin categoría específica. Reparto por obra o "Gasto general" entre todas.'}
+                {!tipoEgreso && 'Elegí el tipo para continuar con la carga.'}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label>Fecha *</Label>
@@ -436,11 +544,92 @@ export function NuevoEgresoDialog({
             </div>
           </div>
 
-          {/* Imputación — va arriba de categoría porque es más importante
+          {/* Imputación a VEHÍCULOS: aparece cuando la categoría elegida
+              tiene flag vinculadaVehiculo (Seguro, Patentes, Rentas automotor,
+              Mecánica). Reemplaza al bloque de obras. */}
+          {modoVehiculos && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <Label>Imputación a vehículo(s) *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setLineasVeh((prev) => [...prev, { vehiculoId: '', monto: '' }])
+                  }
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Agregar vehículo
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {lineasVeh.length === 0 && (
+                  <p className="text-xs text-muted italic">
+                    Agregá al menos un vehículo. Si el gasto es compartido (ej: seguro mensual),
+                    repartí el monto entre varios.
+                  </p>
+                )}
+                {lineasVeh.map((l, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
+                    <Combobox
+                      options={vehiculos.map((v) => ({
+                        value: v.id,
+                        label: v.nombre,
+                        hint: v.patente,
+                      }))}
+                      value={l.vehiculoId}
+                      onChange={(v) =>
+                        setLineasVeh((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, vehiculoId: v } : x)),
+                        )
+                      }
+                      placeholder="Elegí vehículo…"
+                      searchPlaceholder="Buscar…"
+                    />
+                    <MoneyInput
+                      placeholder="Monto"
+                      value={l.monto}
+                      onChange={(v) =>
+                        setLineasVeh((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, monto: v } : x)),
+                        )
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setLineasVeh((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {lineasVeh.length > 0 && totalNum > 0 && (
+                <div className="text-xs text-right">
+                  {Math.abs(diferenciaVeh) < 0.01 ? (
+                    <span className="text-success">
+                      Suma {formatearMonto(sumaLineasVeh, moneda)} = total exacto
+                    </span>
+                  ) : (
+                    <span className="text-danger">
+                      Suma {formatearMonto(sumaLineasVeh, moneda)} · Diferencia{' '}
+                      {formatearMonto(diferenciaVeh, moneda)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Imputación a OBRAS — va arriba de categoría porque es más importante
               (define a qué obra se imputa el gasto). En modo "pago a
               proveedor" las obras del último resumen vienen pre-llenas con
               el saldo pendiente visible al lado; el usuario ingresa cuánto
               paga a cada una (puede dejar menos, igual o más que el saldo). */}
+          {!modoVehiculos && (
           <div className="space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <Label>Imputación a obra(s) *</Label>
@@ -555,6 +744,7 @@ export function NuevoEgresoDialog({
               </div>
             )}
           </div>
+          )}
 
           {!ocultarCategoria && (
             <div className="space-y-2">
