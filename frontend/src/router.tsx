@@ -13,6 +13,8 @@ import { EmpleadoDetallePage } from '@/pages/empleados/EmpleadoDetallePage';
 import { CertificacionesPage } from '@/pages/CertificacionesPage';
 import { ProveedoresPage } from '@/pages/ProveedoresPage';
 import { ProveedorDetallePage } from '@/pages/proveedores/ProveedorDetallePage';
+import { VehiculosPage } from '@/pages/VehiculosPage';
+import { VehiculoDetallePage } from '@/pages/vehiculos/VehiculoDetallePage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -39,6 +41,10 @@ export const router = createBrowserRouter([
           // Proveedores + cta cte
           { path: 'proveedores', element: <ProveedoresPage /> },
           { path: 'proveedores/:id', element: <ProveedorDetallePage /> },
+
+          // Vehículos (reunión 18/11)
+          { path: 'vehiculos', element: <VehiculosPage /> },
+          { path: 'vehiculos/:id', element: <VehiculoDetallePage /> },
 
           // Detalle que necesita ruta propia (link desde dentro de un tab)
           { path: 'liquidaciones/:id', element: <LiquidacionDetallePage /> },
