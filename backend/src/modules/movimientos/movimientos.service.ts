@@ -784,34 +784,33 @@ export class MovimientosService {
     const anchoDoc = doc.page.width - 60; // dentro de los márgenes
 
     // ----- Header -----
+    // Logo más chico (25pt) y más arriba (y=22) para que no se encime con la
+    // línea separadora. El bloque de título va al costado.
     if (logoPath) {
       try {
-        doc.image(logoPath, 30, 25, { width: 40 });
+        doc.image(logoPath, 30, 22, { width: 25 });
       } catch {
         // ignorar
       }
     }
     doc
-      .fontSize(16)
+      .fontSize(15)
       .fillColor(TEXT)
-      .text('Movimientos de Billetera', 80, 28, { continued: false });
+      .text('Movimientos de Billetera', 65, 24);
     doc
-      .fontSize(8)
+      .fontSize(7.5)
       .fillColor(MUTED)
-      .text(
-        `Generado el ${new Date().toLocaleString('es-AR')}`,
-        80,
-        50,
-      );
-    doc.moveTo(30, 72).lineTo(doc.page.width - 30, 72).strokeColor(PRIMARY).lineWidth(1).stroke();
+      .text(`Generado el ${new Date().toLocaleString('es-AR')}`, 65, 43);
+    // Línea con más distancia del logo
+    doc.moveTo(30, 60).lineTo(doc.page.width - 30, 60).strokeColor(PRIMARY).lineWidth(1).stroke();
 
     // ----- Filtros aplicados -----
-    doc.fontSize(8).fillColor(MUTED).text('Filtros aplicados:', 30, 80);
+    doc.fontSize(7.5).fillColor(MUTED).text('Filtros aplicados:', 30, 68);
     let filtroX = 110;
-    const filtroY = 80;
+    const filtroY = 68;
     for (const [k, v] of filtrosLegibles) {
       const label = `${k}: `;
-      doc.font('Helvetica').fontSize(8).fillColor(MUTED).text(label, filtroX, filtroY, {
+      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(label, filtroX, filtroY, {
         continued: true,
       });
       doc.font('Helvetica-Bold').fillColor(TEXT).text(`${v}  `, { continued: true });
@@ -820,28 +819,39 @@ export class MovimientosService {
     }
 
     // ----- Tabla -----
+    // Columnas con gap de 5pt entre ellas (w = ancho disponible - 5 para el
+    // padding). Totales de ancho: sum ≈ 772 pt (cabe en A4 landscape = 842pt)
     const columnas = [
-      { label: 'Fecha', x: 30, w: 55 },
-      { label: 'Tipo', x: 85, w: 45 },
-      { label: 'Caja', x: 130, w: 80 },
+      { label: 'Fecha', x: 30, w: 50 },
+      { label: 'Tipo', x: 85, w: 40 },
+      { label: 'Caja', x: 130, w: 75 },
       { label: 'Monto', x: 210, w: 70, align: 'right' as const },
-      { label: 'Obra(s)', x: 280, w: 100 },
-      { label: 'Categoría', x: 380, w: 70 },
-      { label: 'Proveedor/Origen', x: 450, w: 110 },
-      { label: 'Descripción', x: 560, w: 180 },
-      { label: 'Estado', x: 740, w: 55 },
+      { label: 'Obra(s)', x: 290, w: 120 },
+      { label: 'Categoría', x: 420, w: 70 },
+      { label: 'Prov./Origen', x: 500, w: 90 },
+      { label: 'Descripción', x: 600, w: 160 },
+      { label: 'Estado', x: 770, w: 50 },
     ];
 
-    let y = 110;
+    let y = 95;
+    const ROW_HEIGHT = 14;
     doc.font('Helvetica-Bold').fontSize(8).fillColor(PRIMARY);
     for (const c of columnas) {
-      doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left' });
+      doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left', lineBreak: false });
     }
     y += 12;
     doc.moveTo(30, y).lineTo(doc.page.width - 30, y).strokeColor('#e5e7eb').lineWidth(0.4).stroke();
     y += 4;
 
     doc.font('Helvetica').fontSize(7).fillColor(TEXT);
+
+    // Helper: trunca un string si excede el ancho visual aproximado.
+    // Con fontSize=7, cada char ≈ 3.3pt. Ellipsis "…" al final.
+    const truncar = (s: string, maxW: number): string => {
+      const maxChars = Math.floor(maxW / 3.3);
+      if (s.length <= maxChars) return s;
+      return s.slice(0, maxChars - 1).trimEnd() + '…';
+    };
 
     for (const mov of resultado.data) {
       // Salto de página si no entra
@@ -851,7 +861,7 @@ export class MovimientosService {
         // Re-render header de tabla
         doc.font('Helvetica-Bold').fontSize(8).fillColor(PRIMARY);
         for (const c of columnas) {
-          doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left' });
+          doc.text(c.label, c.x, y, { width: c.w, align: c.align ?? 'left', lineBreak: false });
         }
         y += 12;
         doc
@@ -864,13 +874,7 @@ export class MovimientosService {
         doc.font('Helvetica').fontSize(7).fillColor(TEXT);
       }
 
-      const obrasStr = mov.imputaciones?.map((i) => i.obra.nombre).join(', ') ?? '';
-      const obraIngresoStr =
-        mov.tipo === TipoMovimiento.INGRESO && mov.obraIngresoId
-          ? // Para ingresos usamos obraIngresoId (no viene included por defecto, pero
-            // el findAll de arriba no lo trae; uso string vacío por ahora)
-            ''
-          : '';
+      const obrasRaw = mov.imputaciones?.map((i) => i.obra.nombre).join(', ') ?? '';
       const color =
         mov.tipo === TipoMovimiento.INGRESO
           ? '#047857'
@@ -878,28 +882,34 @@ export class MovimientosService {
             ? '#b91c1c'
             : MUTED;
 
+      const opts = { lineBreak: false };
       doc.fillColor(TEXT);
-      doc.text(new Date(mov.fecha).toLocaleDateString('es-AR'), 30, y, { width: 55 });
-      doc.fillColor(color).text(mov.tipo, 85, y, { width: 45 });
-      doc.fillColor(TEXT).text(mov.caja.nombre, 130, y, { width: 80 });
+      doc.text(new Date(mov.fecha).toLocaleDateString('es-AR'), 30, y, { width: 50, ...opts });
+      doc.fillColor(color).text(mov.tipo, 85, y, { width: 40, ...opts });
+      doc.fillColor(TEXT).text(truncar(mov.caja.nombre, 75), 130, y, { width: 75, ...opts });
+      doc.fillColor(color).text(formatearMonto(mov.monto.toString(), mov.moneda), 210, y, {
+        width: 70,
+        align: 'right',
+        ...opts,
+      });
+      doc.fillColor(TEXT).text(truncar(obrasRaw || '—', 120), 290, y, { width: 120, ...opts });
       doc
-        .fillColor(color)
-        .text(formatearMonto(mov.monto.toString(), mov.moneda), 210, y, {
-          width: 70,
-          align: 'right',
-        });
-      doc.fillColor(TEXT).text(obrasStr || obraIngresoStr || '—', 280, y, { width: 100 });
-      doc.fillColor(MUTED).text(mov.categoria?.nombre ?? '—', 380, y, { width: 70 });
-      doc.fillColor(TEXT).text(mov.beneficiario?.nombre ?? '—', 450, y, { width: 110 });
-      doc.fillColor(MUTED).text(mov.descripcion ?? '—', 560, y, { width: 180 });
+        .fillColor(MUTED)
+        .text(truncar(mov.categoria?.nombre ?? '—', 70), 420, y, { width: 70, ...opts });
+      doc
+        .fillColor(TEXT)
+        .text(truncar(mov.beneficiario?.nombre ?? '—', 90), 500, y, { width: 90, ...opts });
+      doc
+        .fillColor(MUTED)
+        .text(truncar(mov.descripcion ?? '—', 160), 600, y, { width: 160, ...opts });
       doc.fillColor(mov.estado === EstadoMovimiento.CONFIRMADO ? '#047857' : MUTED).text(
         mov.estado,
-        740,
+        770,
         y,
-        { width: 55 },
+        { width: 50, lineBreak: false },
       );
 
-      y += 16;
+      y += ROW_HEIGHT;
     }
 
     // ----- Totales -----
