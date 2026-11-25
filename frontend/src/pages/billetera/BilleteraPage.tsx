@@ -44,6 +44,7 @@ import { MovimientoDetalleDialog } from './MovimientoDetalleDialog';
 import { MovimientoEditarDialog } from './MovimientoEditarDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
+import { FitText } from '@/components/ui/fit-text';
 import { Landmark, Filter } from 'lucide-react';
 import {
   Dialog,
@@ -911,14 +912,23 @@ function BigStatCard({
             maximumFractionDigits: 2,
           });
           return (
-            <div key={i}>
+            // min-w-0 crítico en grid → permite al hijo achicarse por debajo de
+            // su ancho intrínseco. Sin esto el FitText no tiene presión para
+            // reducirse y se desborda el grid.
+            <div key={i} className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-white/50 flex items-center gap-1">
                 {it.icon}
                 {it.label}
               </div>
-              <div className={`mt-1 flex items-baseline gap-1 ${it.color ?? 'text-white'}`}>
-                <span className="text-base text-white/60">{it.simbolo}</span>
-                <span className="text-2xl md:text-3xl font-bold tabular-nums truncate">{nfmt}</span>
+              <div className={`mt-1 flex items-baseline gap-1 min-w-0 ${it.color ?? 'text-white'}`}>
+                <span className="text-base text-white/60 shrink-0">{it.simbolo}</span>
+                {/* min-w-0 + flex-1 para que FitText mida el ancho real
+                    disponible (sin esto el padre crecería hasta el contenido) */}
+                <div className="flex-1 min-w-0">
+                  <FitText className="font-bold" maxSize={30} minSize={14}>
+                    {nfmt}
+                  </FitText>
+                </div>
               </div>
             </div>
           );
