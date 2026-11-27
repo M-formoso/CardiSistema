@@ -26,7 +26,6 @@ import { categoriasService } from '@/services/categoriasService';
 import { beneficiariosService } from '@/services/beneficiariosService';
 import {
   movimientosService,
-  type EstadoMovimiento,
   type Movimiento,
   type TipoMovimiento,
 } from '@/services/movimientosService';
@@ -54,12 +53,6 @@ import {
 import { Label } from '@/components/ui/label';
 
 type MonedaFiltro = 'TODAS' | 'ARS' | 'USD';
-
-const ESTADO_VARIANTE: Record<EstadoMovimiento, 'success' | 'danger' | 'muted'> = {
-  CONFIRMADO: 'success',
-  ANULADO: 'danger',
-  REVERSA: 'muted',
-};
 
 export function BilleteraPage() {
   const qc = useQueryClient();
@@ -232,6 +225,18 @@ export function BilleteraPage() {
             )}
           </Button>
           <div className="hidden md:flex items-center gap-2 ml-auto">
+            {/* Buscador libre — reunión Dani 26/11 v3: va arriba, no en la
+                fila de filtros de la columna Descripción. */}
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
+              <Input
+                data-mov-search
+                placeholder="Buscar en descripción… (/)"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="pl-7 h-8 text-xs w-64"
+              />
+            </div>
             {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
               <Button
                 variant="ghost"
@@ -299,8 +304,7 @@ export function BilleteraPage() {
                 <TableHead>Obra(s)</TableHead>
                 <TableHead>Categoría</TableHead>
                 <TableHead>Beneficiario</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead className="pr-4 sm:pr-6 lg:pr-8">Estado</TableHead>
+                <TableHead className="pr-4 sm:pr-6 lg:pr-8">Descripción</TableHead>
               </TableRow>
               {/* Fila 2: filtros alineados con cada columna (desktop).
                   En mobile se oculta y se usa el dialog "Filtros" de arriba. */}
@@ -396,19 +400,7 @@ export function BilleteraPage() {
                     emptyText="Ninguno"
                   />
                 </TableHead>
-                <TableHead>
-                  <div className="relative">
-                    <Search className="h-3.5 w-3.5 absolute left-1.5 top-1/2 -translate-y-1/2 text-muted" />
-                    <Input
-                      data-mov-search
-                      placeholder="Buscar… (/)"
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      className="pl-6 h-7 text-[11px] w-[160px]"
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className="pr-4 sm:pr-6 lg:pr-8">{/* Estado — sin filtro por ahora */}</TableHead>
+                <TableHead className="pr-4 sm:pr-6 lg:pr-8">{/* Descripción — buscador va arriba en la barra */}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -756,10 +748,22 @@ function MovimientoRow({ m, onDetalle }: { m: Movimiento; onDetalle: () => void 
       <TableCell className="text-xs text-muted">{m.categoria?.nombre ?? '—'}</TableCell>
       <TableCell className="text-xs">{m.beneficiario?.nombre ?? '—'}</TableCell>
       <TableCell className="text-xs max-w-xs">
-        <div className="truncate">{m.descripcion ?? '—'}</div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={ESTADO_VARIANTE[m.estado]}>{m.estado}</Badge>
+        {/* Si el movimiento está anulado o es una reversa, lo marco con un
+            punto de color al lado de la descripción (se perdió la columna
+            Estado, pero sigue siendo útil distinguirlos de un vistazo). */}
+        <div className="flex items-center gap-1.5">
+          {m.estado !== 'CONFIRMADO' && (
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                m.estado === 'ANULADO' ? 'bg-danger' : 'bg-muted'
+              }`}
+              title={m.estado}
+            />
+          )}
+          <div className={`truncate ${m.estado !== 'CONFIRMADO' ? 'opacity-60 line-through' : ''}`}>
+            {m.descripcion ?? '—'}
+          </div>
+        </div>
       </TableCell>
     </TableRow>
   );
