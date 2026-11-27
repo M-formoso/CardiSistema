@@ -213,8 +213,18 @@ export function BilleteraPage() {
           </div>
         </div>
 
-        {/* Saldo por caja — una chip chica por caja, grilla responsive */}
-        <SaldosCajasCompacto cajas={cajas} saldos={saldos} />
+        {/* Selector de caja + saldo grande (reunión Dani 26/11 v3). Tabs
+            arriba, card grande abajo con el saldo de la caja seleccionada
+            (o la suma total si es "Todas"). El tab elegido filtra también
+            la tabla de abajo. Botón a la derecha para abrir la cartera de
+            cheques — patrón tomado del sistema Cocoguana. */}
+        <SelectorCajaConSaldo
+          cajas={cajas}
+          saldos={saldos}
+          cajaId={cajaId}
+          onCajaChange={setCajaId}
+          onAbrirCartera={() => setOpenCartera(true)}
+        />
       </div>
 
       {/* ==================== BODY ====================
@@ -238,19 +248,21 @@ export function BilleteraPage() {
               <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
             )}
           </Button>
-          <div className="hidden md:flex items-center gap-2 ml-auto">
-            {/* Buscador libre — reunión Dani 26/11 v3: va arriba, no en la
-                fila de filtros de la columna Descripción. */}
-            <div className="relative">
-              <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
+          <div className="hidden md:flex items-center gap-2 flex-1">
+            {/* Buscador libre — reunión Dani 26/11 v4: ancho generoso, ocupa
+                el espacio disponible entre "Movimientos" y los botones de la
+                derecha. */}
+            <div className="relative flex-1 max-w-2xl">
+              <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <Input
                 data-mov-search
-                placeholder="Buscar en descripción… (/)"
+                placeholder="Buscar en descripción… (presioná / para enfocar)"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                className="pl-7 h-8 text-xs w-64"
+                className="pl-8 h-8 text-sm w-full"
               />
             </div>
+            <div className="flex items-center gap-2 ml-auto">
             {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
               <Button
                 variant="ghost"
@@ -299,6 +311,7 @@ export function BilleteraPage() {
               <Printer className="h-3.5 w-3.5 mr-1" />
               Imprimir
             </Button>
+            </div>
           </div>
         </div>
 
@@ -324,30 +337,38 @@ export function BilleteraPage() {
                   En mobile se oculta y se usa el dialog "Filtros" de arriba. */}
               <TableRow className="hidden md:table-row [&_th]:sticky [&_th]:top-[37px] [&_th]:py-1.5 [&_th]:border-b [&_th]:border-border [&_th]:shadow-[0_1px_0_0_hsl(var(--border))]">
                 <TableHead className="pl-4 sm:pl-6 lg:pl-8">
-                  <div className="flex flex-col gap-0.5">
-                    <Input
-                      type="date"
-                      value={desde}
-                      onChange={(e) => setDesde(e.target.value)}
-                      className="h-7 w-[120px] text-[11px] px-1.5"
-                      aria-label="Desde"
-                      title="Desde"
-                    />
-                    <Input
-                      type="date"
-                      value={hasta}
-                      onChange={(e) => setHasta(e.target.value)}
-                      className="h-7 w-[120px] text-[11px] px-1.5"
-                      aria-label="Hasta"
-                      title="Hasta"
-                    />
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center gap-1.5">
+                      <span className="text-[9px] uppercase tracking-wider text-muted shrink-0 w-10">
+                        Desde
+                      </span>
+                      <Input
+                        type="date"
+                        value={desde}
+                        onChange={(e) => setDesde(e.target.value)}
+                        className="h-7 w-[125px] text-[11px] px-1.5"
+                        aria-label="Desde"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <span className="text-[9px] uppercase tracking-wider text-muted shrink-0 w-10">
+                        Hasta
+                      </span>
+                      <Input
+                        type="date"
+                        value={hasta}
+                        onChange={(e) => setHasta(e.target.value)}
+                        className="h-7 w-[125px] text-[11px] px-1.5"
+                        aria-label="Hasta"
+                      />
+                    </label>
                   </div>
                 </TableHead>
                 <TableHead>
                   <Select
                     value={tipo}
                     onChange={(e) => setTipo(e.target.value as TipoMovimiento | '')}
-                    className="h-7 w-[90px] text-[11px]"
+                    className="h-7 w-[100px] text-[11px]"
                   >
                     <option value="">Todos</option>
                     <option value="INGRESO">Ingreso</option>
@@ -357,7 +378,7 @@ export function BilleteraPage() {
                 <TableHead>
                   <Combobox
                     size="sm"
-                    className="w-[130px]"
+                    className="w-[150px]"
                     options={cajas.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda }))}
                     value={cajaId}
                     onChange={setCajaId}
@@ -369,7 +390,7 @@ export function BilleteraPage() {
                   <Select
                     value={moneda}
                     onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}
-                    className="h-7 w-[85px] text-[11px]"
+                    className="h-7 w-[95px] text-[11px]"
                     title="Filtrar por moneda"
                   >
                     <option value="TODAS">Todas</option>
@@ -381,7 +402,7 @@ export function BilleteraPage() {
                 <TableHead>
                   <Combobox
                     size="sm"
-                    className="w-[150px]"
+                    className="w-[165px]"
                     options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
                     value={obraId}
                     onChange={setObraId}
@@ -393,7 +414,7 @@ export function BilleteraPage() {
                 <TableHead>
                   <Combobox
                     size="sm"
-                    className="w-[140px]"
+                    className="w-[160px]"
                     options={categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo }))}
                     value={categoriaId}
                     onChange={setCategoriaId}
@@ -405,7 +426,7 @@ export function BilleteraPage() {
                 <TableHead>
                   <Combobox
                     size="sm"
-                    className="w-[150px]"
+                    className="w-[170px]"
                     options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
                     value={beneficiarioId}
                     onChange={setBeneficiarioId}
@@ -907,20 +928,27 @@ function MovimientoRow({
 }
 
 /**
- * Cards de saldo por caja distribuidas horizontalmente, ocupando todo el
- * banner (reunión Dani 26/11 v2). Grilla que se adapta a la cantidad de
- * cajas — con 1 ocupa todo el ancho, con 2 se parte al medio, con 3+ en
- * grid. Cards más altas y visuales que la v1 compacta.
+ * Selector de caja con card grande (reunión Dani 26/11 v3).
+ * Tabs arriba con "Todas" + una por caja. Card grande abajo muestra el
+ * saldo de la caja elegida (o la suma si es "Todas"). El tab elegido
+ * sincroniza con el filtro de caja de la tabla.
+ *
+ * Patrón tomado del módulo Billetera de Cocoguana (ver
+ * sistemaCocGuana/frontend → saldo grande con selector).
  */
-function SaldosCajasCompacto({
+function SelectorCajaConSaldo({
   cajas,
   saldos,
+  cajaId,
+  onCajaChange,
+  onAbrirCartera,
 }: {
   cajas: Array<{ id: string; nombre: string; moneda: 'ARS' | 'USD' }>;
   saldos: Array<{ cajaId: string; saldo: string | number; moneda: string }>;
+  cajaId: string;
+  onCajaChange: (id: string) => void;
+  onAbrirCartera: () => void;
 }) {
-  const porCaja = new Map(saldos.map((s) => [s.cajaId, Number(s.saldo)]));
-
   if (cajas.length === 0) {
     return (
       <div className="rounded-lg bg-white/[0.06] border border-white/10 p-3 text-xs text-white/60">
@@ -929,50 +957,102 @@ function SaldosCajasCompacto({
     );
   }
 
-  // Grilla responsiva que se adapta a la cantidad de cajas.
-  // Con pocas cajas (1-3) usa columnas iguales. Con muchas, wrap en grid.
-  const n = cajas.length;
-  const colsClass =
-    n === 1
-      ? 'grid-cols-1'
-      : n === 2
-        ? 'grid-cols-1 sm:grid-cols-2'
-        : n === 3
-          ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+  const porCaja = new Map(saldos.map((s) => [s.cajaId, Number(s.saldo)]));
+  const cajaSel = cajas.find((c) => c.id === cajaId) ?? null;
+
+  // Para la card: si hay caja elegida, mostrar su saldo. Si es "Todas",
+  // sumar por moneda (si todas son ARS → un solo card; si hay mix → dos).
+  let saldoAMostrar: number;
+  let monedaAMostrar: 'ARS' | 'USD';
+  let nombreAMostrar: string;
+  if (cajaSel) {
+    saldoAMostrar = porCaja.get(cajaSel.id) ?? 0;
+    monedaAMostrar = cajaSel.moneda;
+    nombreAMostrar = cajaSel.nombre;
+  } else {
+    saldoAMostrar = cajas
+      .filter((c) => c.moneda === 'ARS')
+      .reduce((acc, c) => acc + (porCaja.get(c.id) ?? 0), 0);
+    monedaAMostrar = 'ARS';
+    nombreAMostrar = 'Total — todas las cajas';
+  }
+  const simbolo = monedaAMostrar === 'USD' ? 'US$' : '$';
+  const neg = saldoAMostrar < 0;
+  const nfmt = saldoAMostrar.toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   return (
-    <div className={`grid ${colsClass} gap-3`}>
-      {cajas.map((c) => {
-        const saldo = porCaja.get(c.id) ?? 0;
-        const neg = saldo < 0;
-        const simbolo = c.moneda === 'USD' ? 'US$' : '$';
-        const nfmt = saldo.toLocaleString('es-AR', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
-        return (
-          <div
-            key={c.id}
-            className="min-w-0 rounded-xl bg-white/[0.08] border border-white/15 px-4 py-3 backdrop-blur-sm shadow-sm"
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/70 truncate">
-              {c.nombre}
-            </div>
-            <div
-              className={`mt-1 flex items-baseline gap-1.5 min-w-0 ${neg ? 'text-red-300' : 'text-white'}`}
+    <div className="space-y-3">
+      {/* Tabs de caja + botón cartera de cheques */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+          <TabCaja activo={!cajaId} onClick={() => onCajaChange('')}>
+            Todas
+          </TabCaja>
+          {cajas.map((c) => (
+            <TabCaja
+              key={c.id}
+              activo={cajaId === c.id}
+              onClick={() => onCajaChange(c.id)}
             >
-              <span className="text-sm text-white/55 shrink-0">{simbolo}</span>
-              <div className="flex-1 min-w-0">
-                <FitText className="font-bold" maxSize={32} minSize={14}>
-                  {nfmt}
-                </FitText>
-              </div>
-            </div>
+              {c.nombre}
+            </TabCaja>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onAbrirCartera}
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors shrink-0"
+          title="Ver cartera de cheques con filtros por fecha"
+        >
+          <ScrollText className="h-3.5 w-3.5" />
+          Cartera de cheques
+        </button>
+      </div>
+
+      {/* Card grande con el saldo */}
+      <div className="min-w-0 rounded-xl bg-white/[0.08] border border-white/15 px-5 py-4 backdrop-blur-sm shadow-sm">
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-white/70 truncate">
+          {nombreAMostrar}
+        </div>
+        <div
+          className={`mt-1 flex items-baseline gap-2 min-w-0 ${neg ? 'text-red-300' : 'text-white'}`}
+        >
+          <span className="text-base text-white/55 shrink-0">{simbolo}</span>
+          <div className="flex-1 min-w-0">
+            <FitText className="font-bold" maxSize={44} minSize={18}>
+              {nfmt}
+            </FitText>
           </div>
-        );
-      })}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function TabCaja({
+  activo,
+  onClick,
+  children,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+        activo
+          ? 'bg-white text-accent shadow-sm'
+          : 'bg-white/10 text-white/80 hover:bg-white/15 hover:text-white'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
