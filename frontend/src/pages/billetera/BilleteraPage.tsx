@@ -177,15 +177,14 @@ export function BilleteraPage() {
     // -m-* neutraliza el padding del <main>; el h-[calc(100%+N)] compensa
     // ese padding en la altura para que la Billetera ocupe el main completo.
     <div className="-m-4 sm:-m-6 lg:-m-8 h-[calc(100%+2rem)] sm:h-[calc(100%+3rem)] lg:h-[calc(100%+4rem)] flex flex-col">
-      {/* ==================== HERO COMPACTO (reunión Dani 26/11) ====================
-          Solo: título + saldo por caja (fila compacta). Nada de subtítulo,
-          nada de totales de ingresos/egresos, nada de filtros arriba
-          (los filtros bajaron a la barra de la tabla). */}
+      {/* ==================== HERO (reunión Dani 26/11 v2) ====================
+          Un poco más alto que v1, con cards de caja grandes ocupando todo
+          el banner (distribución horizontal pareja, no apretadas arriba). */}
       <div
-        className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-4 pb-4 shadow-lg"
+        className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-5 pb-6 shadow-lg"
         style={{
           backgroundImage:
-            'radial-gradient(500px 180px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 180px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
+            'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
         }}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
@@ -211,180 +210,87 @@ export function BilleteraPage() {
         <SaldosCajasCompacto cajas={cajas} saldos={saldos} />
       </div>
 
-      {/* ==================== BODY (hero → filtros → tabla scroll → footer) ==================== */}
+      {/* ==================== BODY ====================
+          Mini-barra solo con acciones. Los filtros bajan a la tabla
+          (una fila sticky por debajo del header, uno por columna). */}
       <div className="flex-1 min-h-0 flex flex-col bg-card">
-        {/* Barra de filtros (todos combinables) — reunión Dani 26/11 */}
-        <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-2.5 bg-card">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider shrink-0">
-              Movimientos
-            </h2>
-            {/* Mobile: dialog de filtros (más compacto que tener 8 combos en pantalla chica) */}
+        <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-2 bg-card flex items-center gap-3 flex-wrap">
+          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider shrink-0">
+            Movimientos
+          </h2>
+          {/* Mobile: dialog de filtros (más compacto que tener 8 combos en pantalla chica) */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpenFiltrosMovsMobile(true)}
+            className="md:hidden h-8 text-xs"
+          >
+            <Filter className="h-3.5 w-3.5 mr-1" />
+            Filtros
+            {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
+              <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
+          </Button>
+          <div className="hidden md:flex items-center gap-2 ml-auto">
+            {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setCajaId('');
+                  setMoneda('TODAS');
+                  setTipo('');
+                  setObraId('');
+                  setCategoriaId('');
+                  setBeneficiarioId('');
+                  setQ('');
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+            <span className="text-[11px] text-muted">
+              {listado?.total ?? 0} registros
+            </span>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setOpenFiltrosMovsMobile(true)}
-              className="md:hidden h-8 text-xs"
+              className="h-8 text-xs"
+              onClick={async () => {
+                try {
+                  const blob = await movimientosService.pdfBlob({
+                    cajaId: cajaId || undefined,
+                    tipo: tipo || undefined,
+                    obraId: obraId || undefined,
+                    categoriaId: categoriaId || undefined,
+                    beneficiarioId: beneficiarioId || undefined,
+                    desde,
+                    hasta,
+                    q: q || undefined,
+                  });
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, '_blank');
+                  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                } catch {
+                  toast.error('No se pudo generar el PDF');
+                }
+              }}
             >
-              <Filter className="h-3.5 w-3.5 mr-1" />
-              Filtros
-              {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
-                <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
-              )}
+              <Printer className="h-3.5 w-3.5 mr-1" />
+              Imprimir
             </Button>
-            {/* Desktop: todos los filtros en línea (combinables). Fecha + Caja + Moneda
-                son los "primarios"; después tipo/obra/categoría/proveedor + buscador. */}
-            <div className="hidden md:flex flex-wrap items-center gap-2 flex-1">
-              <Input
-                type="date"
-                value={desde}
-                onChange={(e) => setDesde(e.target.value)}
-                className="h-8 w-[130px] text-xs"
-                aria-label="Desde"
-                title="Desde"
-              />
-              <span className="text-xs text-muted">→</span>
-              <Input
-                type="date"
-                value={hasta}
-                onChange={(e) => setHasta(e.target.value)}
-                className="h-8 w-[130px] text-xs"
-                aria-label="Hasta"
-                title="Hasta"
-              />
-              <Combobox
-                size="sm"
-                className="w-40"
-                options={cajas.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda }))}
-                value={cajaId}
-                onChange={setCajaId}
-                allLabel="Caja: todas"
-                searchPlaceholder="Buscar caja…"
-              />
-              <Select
-                value={moneda}
-                onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}
-                className="h-8 w-[110px] text-xs"
-              >
-                <option value="TODAS">Moneda: todas</option>
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-              </Select>
-              <Combobox
-                size="sm"
-                className="w-32"
-                options={[
-                  { value: 'INGRESO', label: 'Ingresos' },
-                  { value: 'EGRESO', label: 'Egresos' },
-                ]}
-                value={tipo}
-                onChange={(v) => setTipo(v as TipoMovimiento | '')}
-                allLabel="Tipo: todos"
-                searchPlaceholder="Filtrar tipo…"
-              />
-              <Combobox
-                size="sm"
-                className="w-44"
-                options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
-                value={obraId}
-                onChange={setObraId}
-                allLabel="Obra: todas"
-                searchPlaceholder="Buscar obra…"
-                emptyText="Ninguna obra coincide"
-              />
-              <Combobox
-                size="sm"
-                className="w-48"
-                options={categorias.map((c) => ({
-                  value: c.id,
-                  label: c.nombre,
-                  hint: c.codigo,
-                }))}
-                value={categoriaId}
-                onChange={setCategoriaId}
-                allLabel="Categoría: todas"
-                searchPlaceholder="Buscar categoría…"
-                emptyText="Ninguna categoría coincide"
-              />
-              <Combobox
-                size="sm"
-                className="w-48"
-                options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
-                value={beneficiarioId}
-                onChange={setBeneficiarioId}
-                allLabel="Proveedor / origen"
-                searchPlaceholder="Buscar…"
-                emptyText="Sin coincidencias"
-              />
-              <div className="relative">
-                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
-                <Input
-                  data-mov-search
-                  placeholder="Buscar… (/)"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  className="pl-7 h-8 text-xs w-48"
-                />
-              </div>
-              {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    setCajaId('');
-                    setMoneda('TODAS');
-                    setTipo('');
-                    setObraId('');
-                    setCategoriaId('');
-                    setBeneficiarioId('');
-                    setQ('');
-                  }}
-                >
-                  Limpiar
-                </Button>
-              )}
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-[11px] text-muted">
-                  {listado?.total ?? 0} registros
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={async () => {
-                    try {
-                      const blob = await movimientosService.pdfBlob({
-                        cajaId: cajaId || undefined,
-                        tipo: tipo || undefined,
-                        obraId: obraId || undefined,
-                        categoriaId: categoriaId || undefined,
-                        beneficiarioId: beneficiarioId || undefined,
-                        desde,
-                        hasta,
-                        q: q || undefined,
-                      });
-                      const url = URL.createObjectURL(blob);
-                      window.open(url, '_blank');
-                      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-                    } catch {
-                      toast.error('No se pudo generar el PDF');
-                    }
-                  }}
-                >
-                  <Printer className="h-3.5 w-3.5 mr-1" />
-                  Imprimir
-                </Button>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Tabla scrolleable — ocupa todo el espacio libre */}
+        {/* Tabla scrolleable — ocupa todo el espacio libre.
+            Patrón Excel/Airtable (reunión Dani 26/11 v2): dos filas sticky
+            arriba — títulos + filtros, uno por columna, alineados. */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <Table>
-            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-card [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:shadow-[0_1px_0_0_hsl(var(--border))]">
-              <TableRow>
+            <TableHeader className="[&_th]:bg-card [&_th]:z-10">
+              {/* Fila 1: títulos */}
+              <TableRow className="[&_th]:sticky [&_th]:top-0 [&_th]:border-b [&_th]:border-border/50">
                 <TableHead className="pl-4 sm:pl-6 lg:pl-8">Fecha</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Caja</TableHead>
@@ -395,6 +301,114 @@ export function BilleteraPage() {
                 <TableHead>Beneficiario</TableHead>
                 <TableHead>Descripción</TableHead>
                 <TableHead className="pr-4 sm:pr-6 lg:pr-8">Estado</TableHead>
+              </TableRow>
+              {/* Fila 2: filtros alineados con cada columna (desktop).
+                  En mobile se oculta y se usa el dialog "Filtros" de arriba. */}
+              <TableRow className="hidden md:table-row [&_th]:sticky [&_th]:top-[37px] [&_th]:py-1.5 [&_th]:border-b [&_th]:border-border [&_th]:shadow-[0_1px_0_0_hsl(var(--border))]">
+                <TableHead className="pl-4 sm:pl-6 lg:pl-8">
+                  <div className="flex flex-col gap-0.5">
+                    <Input
+                      type="date"
+                      value={desde}
+                      onChange={(e) => setDesde(e.target.value)}
+                      className="h-7 w-[120px] text-[11px] px-1.5"
+                      aria-label="Desde"
+                      title="Desde"
+                    />
+                    <Input
+                      type="date"
+                      value={hasta}
+                      onChange={(e) => setHasta(e.target.value)}
+                      className="h-7 w-[120px] text-[11px] px-1.5"
+                      aria-label="Hasta"
+                      title="Hasta"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <Select
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value as TipoMovimiento | '')}
+                    className="h-7 w-[90px] text-[11px]"
+                  >
+                    <option value="">Todos</option>
+                    <option value="INGRESO">Ingreso</option>
+                    <option value="EGRESO">Egreso</option>
+                  </Select>
+                </TableHead>
+                <TableHead>
+                  <Combobox
+                    size="sm"
+                    className="w-[130px]"
+                    options={cajas.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda }))}
+                    value={cajaId}
+                    onChange={setCajaId}
+                    allLabel="Todas"
+                    searchPlaceholder="Buscar caja…"
+                  />
+                </TableHead>
+                <TableHead>
+                  <Select
+                    value={moneda}
+                    onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}
+                    className="h-7 w-[85px] text-[11px]"
+                    title="Filtrar por moneda"
+                  >
+                    <option value="TODAS">Todas</option>
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                  </Select>
+                </TableHead>
+                <TableHead>{/* Equiv. — sin filtro */}</TableHead>
+                <TableHead>
+                  <Combobox
+                    size="sm"
+                    className="w-[150px]"
+                    options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
+                    value={obraId}
+                    onChange={setObraId}
+                    allLabel="Todas"
+                    searchPlaceholder="Buscar obra…"
+                    emptyText="Ninguna obra"
+                  />
+                </TableHead>
+                <TableHead>
+                  <Combobox
+                    size="sm"
+                    className="w-[140px]"
+                    options={categorias.map((c) => ({ value: c.id, label: c.nombre, hint: c.codigo }))}
+                    value={categoriaId}
+                    onChange={setCategoriaId}
+                    allLabel="Todas"
+                    searchPlaceholder="Buscar categoría…"
+                    emptyText="Ninguna"
+                  />
+                </TableHead>
+                <TableHead>
+                  <Combobox
+                    size="sm"
+                    className="w-[150px]"
+                    options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
+                    value={beneficiarioId}
+                    onChange={setBeneficiarioId}
+                    allLabel="Todos"
+                    searchPlaceholder="Buscar…"
+                    emptyText="Ninguno"
+                  />
+                </TableHead>
+                <TableHead>
+                  <div className="relative">
+                    <Search className="h-3.5 w-3.5 absolute left-1.5 top-1/2 -translate-y-1/2 text-muted" />
+                    <Input
+                      data-mov-search
+                      placeholder="Buscar… (/)"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      className="pl-6 h-7 text-[11px] w-[160px]"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className="pr-4 sm:pr-6 lg:pr-8">{/* Estado — sin filtro por ahora */}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -752,13 +766,10 @@ function MovimientoRow({ m, onDetalle }: { m: Movimiento; onDetalle: () => void 
 }
 
 /**
- * Lista compacta de saldos por caja (reunión Dani 26/11). Reemplazó al
- * BigStatCard con totales por moneda y al card de "Movimientos" con
- * ingresos/egresos. Objetivo: ver todas las cajas de un vistazo y dejar
- * más espacio para la tabla.
- *
- * Una card chica por caja: nombre arriba, saldo abajo (con FitText para
- * que siempre entre). Grilla responsive.
+ * Cards de saldo por caja distribuidas horizontalmente, ocupando todo el
+ * banner (reunión Dani 26/11 v2). Grilla que se adapta a la cantidad de
+ * cajas — con 1 ocupa todo el ancho, con 2 se parte al medio, con 3+ en
+ * grid. Cards más altas y visuales que la v1 compacta.
  */
 function SaldosCajasCompacto({
   cajas,
@@ -767,7 +778,6 @@ function SaldosCajasCompacto({
   cajas: Array<{ id: string; nombre: string; moneda: 'ARS' | 'USD' }>;
   saldos: Array<{ cajaId: string; saldo: string | number; moneda: string }>;
 }) {
-  // Saldo por cajaId (lookup O(1))
   const porCaja = new Map(saldos.map((s) => [s.cajaId, Number(s.saldo)]));
 
   if (cajas.length === 0) {
@@ -778,8 +788,20 @@ function SaldosCajasCompacto({
     );
   }
 
+  // Grilla responsiva que se adapta a la cantidad de cajas.
+  // Con pocas cajas (1-3) usa columnas iguales. Con muchas, wrap en grid.
+  const n = cajas.length;
+  const colsClass =
+    n === 1
+      ? 'grid-cols-1'
+      : n === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : n === 3
+          ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+    <div className={`grid ${colsClass} gap-3`}>
       {cajas.map((c) => {
         const saldo = porCaja.get(c.id) ?? 0;
         const neg = saldo < 0;
@@ -791,17 +813,17 @@ function SaldosCajasCompacto({
         return (
           <div
             key={c.id}
-            className="min-w-0 rounded-lg bg-white/[0.06] border border-white/10 px-3 py-2 backdrop-blur-sm"
+            className="min-w-0 rounded-xl bg-white/[0.08] border border-white/15 px-4 py-3 backdrop-blur-sm shadow-sm"
           >
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/60 truncate">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/70 truncate">
               {c.nombre}
             </div>
             <div
-              className={`mt-0.5 flex items-baseline gap-1 min-w-0 ${neg ? 'text-red-300' : 'text-white'}`}
+              className={`mt-1 flex items-baseline gap-1.5 min-w-0 ${neg ? 'text-red-300' : 'text-white'}`}
             >
-              <span className="text-xs text-white/50 shrink-0">{simbolo}</span>
+              <span className="text-sm text-white/55 shrink-0">{simbolo}</span>
               <div className="flex-1 min-w-0">
-                <FitText className="font-bold" maxSize={22} minSize={12}>
+                <FitText className="font-bold" maxSize={32} minSize={14}>
                   {nfmt}
                 </FitText>
               </div>
