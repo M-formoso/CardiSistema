@@ -13,6 +13,7 @@ import {
   ScrollText,
   Settings2,
   TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -461,6 +462,7 @@ export function BilleteraPage() {
                   onDetalle={() => setDetalleId(m.id)}
                   selected={seleccionados.has(m.id)}
                   onToggleSelected={() => toggleSeleccionado(m.id)}
+                  totalObrasActivas={obras.length}
                 />
               ))}
             </TableBody>
@@ -842,17 +844,21 @@ function MovimientoRow({
   onDetalle,
   selected,
   onToggleSelected,
+  totalObrasActivas,
 }: {
   m: Movimiento;
   onDetalle: () => void;
   selected: boolean;
   onToggleSelected: () => void;
+  totalObrasActivas: number;
 }) {
-  // Si el movimiento tiene 3 o más imputaciones, lo tratamos como "Gasto
-  // general" (reparto entre varias obras) — reunión Dani 26/11 v5. La lista
-  // completa sigue disponible en el tooltip y en el detalle del movimiento.
+  // Un movimiento es "Gasto general" cuando se imputó a (casi) TODAS las
+  // obras activas — reunión Dani 26/11 v6. Margen de 1 por drift (si se
+  // desactivó una obra después del movimiento, igual lo mostramos como
+  // general). Si la cuenta no coincide, mostramos la lista de obras.
   const cantImputaciones = m.imputaciones?.length ?? 0;
-  const esGastoGeneral = cantImputaciones >= 3;
+  const esGastoGeneral =
+    totalObrasActivas > 2 && cantImputaciones >= totalObrasActivas - 1;
   const obras = cantImputaciones
     ? esGastoGeneral
       ? 'Gasto general'
@@ -947,13 +953,10 @@ function MovimientoRow({
 }
 
 /**
- * Selector de caja con card grande (reunión Dani 26/11 v3).
- * Tabs arriba con "Todas" + una por caja. Card grande abajo muestra el
- * saldo de la caja elegida (o la suma si es "Todas"). El tab elegido
- * sincroniza con el filtro de caja de la tabla.
- *
- * Patrón tomado del módulo Billetera de Cocoguana (ver
- * sistemaCocGuana/frontend → saldo grande con selector).
+ * Selector de caja (dropdown) + card grande con el saldo (reunión Dani
+ * 26/11 v5). En v3 había tabs, pero no escalan con muchas cajas. Volvimos
+ * al patrón "antes": un dropdown que abre la lista de cuentas y al elegir
+ * se cambia el card grande + se filtra la tabla.
  */
 function SelectorCajaConSaldo({
   cajas,
@@ -968,6 +971,10 @@ function SelectorCajaConSaldo({
   onCajaChange: (id: string) => void;
   onAbrirCartera: () => void;
 }) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setAbierto(false));
+
   if (cajas.length === 0) {
     return (
       <div className="rounded-lg bg-white/[0.06] border border-white/10 p-3 text-xs text-white/60">
@@ -980,7 +987,7 @@ function SelectorCajaConSaldo({
   const cajaSel = cajas.find((c) => c.id === cajaId) ?? null;
 
   // Para la card: si hay caja elegida, mostrar su saldo. Si es "Todas",
-  // sumar por moneda (si todas son ARS → un solo card; si hay mix → dos).
+  // sumar por moneda (si todas son ARS → un solo card).
   let saldoAMostrar: number;
   let monedaAMostrar: 'ARS' | 'USD';
   let nombreAMostrar: string;
@@ -1002,23 +1009,51 @@ function SelectorCajaConSaldo({
     maximumFractionDigits: 2,
   });
 
+  const elegir = (id: string) => {
+    onCajaChange(id);
+    setAbierto(false);
+  };
+
   return (
     <div className="space-y-3">
-      {/* Tabs de caja + botón cartera de cheques */}
+      {/* Selector "Cuentas" (dropdown) + botón cartera de cheques */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
-          <TabCaja activo={!cajaId} onClick={() => onCajaChange('')}>
-            Todas
-          </TabCaja>
-          {cajas.map((c) => (
-            <TabCaja
-              key={c.id}
-              activo={cajaId === c.id}
-              onClick={() => onCajaChange(c.id)}
-            >
-              {c.nombre}
-            </TabCaja>
-          ))}
+        <div ref={ref} className="relative">
+          <button
+            type="button"
+            onClick={() => setAbierto((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors min-w-[200px]"
+          >
+            <Wallet className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left truncate">
+              Cuenta: {cajaSel ? cajaSel.nombre : 'todas'}
+            </span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+          </button>
+          {abierto && (
+            <div className="absolute left-0 top-full mt-1 z-30 min-w-[240px] rounded-md border border-border bg-card text-foreground shadow-xl overflow-hidden">
+              <OpcionCaja
+                activo={!cajaId}
+                onClick={() => elegir('')}
+                label="Todas las cuentas"
+                saldo={cajas
+                  .filter((c) => c.moneda === 'ARS')
+                  .reduce((acc, c) => acc + (porCaja.get(c.id) ?? 0), 0)}
+                moneda="ARS"
+              />
+              <div className="border-t border-border" />
+              {cajas.map((c) => (
+                <OpcionCaja
+                  key={c.id}
+                  activo={cajaId === c.id}
+                  onClick={() => elegir(c.id)}
+                  label={c.nombre}
+                  saldo={porCaja.get(c.id) ?? 0}
+                  moneda={c.moneda}
+                />
+              ))}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -1051,26 +1086,39 @@ function SelectorCajaConSaldo({
   );
 }
 
-function TabCaja({
+function OpcionCaja({
   activo,
   onClick,
-  children,
+  label,
+  saldo,
+  moneda,
 }: {
   activo: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  label: string;
+  saldo: number;
+  moneda: 'ARS' | 'USD';
 }) {
+  const simbolo = moneda === 'USD' ? 'US$' : '$';
+  const neg = saldo < 0;
+  const nfmt = saldo.toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-        activo
-          ? 'bg-white text-accent shadow-sm'
-          : 'bg-white/10 text-white/80 hover:bg-white/15 hover:text-white'
+      className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
+        activo ? 'bg-primary/10 text-primary' : 'hover:bg-muted/10'
       }`}
     >
-      {children}
+      <span className="text-sm font-medium truncate">{label}</span>
+      <span
+        className={`text-xs num shrink-0 ${neg ? 'text-danger' : 'text-muted'}`}
+      >
+        {simbolo} {nfmt}
+      </span>
     </button>
   );
 }
