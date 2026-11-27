@@ -42,6 +42,7 @@ import { MovimientoEditarDialog } from './MovimientoEditarDialog';
 import { CotizacionBadge } from '@/components/layout/CotizacionBadge';
 import { Pagination } from '@/components/ui/pagination';
 import { FitText } from '@/components/ui/fit-text';
+import { PanelFlotante } from '@/components/ui/panel-flotante';
 import { Landmark, Filter } from 'lucide-react';
 import {
   Dialog,
@@ -79,6 +80,19 @@ export function BilleteraPage() {
   const [openNuevoCheque, setOpenNuevoCheque] = useState(false);
   const [openCuentas, setOpenCuentas] = useState(false);
   const [openFiltrosMovsMobile, setOpenFiltrosMovsMobile] = useState(false);
+
+  // ---------- Selección múltiple ----------
+  // Reunión Dani 26/11: panel flotante con sumas de los seleccionados.
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const toggleSeleccionado = (id: string) => {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const limpiarSeleccion = () => setSeleccionados(new Set());
 
   // ---------- Data ----------
   const { data: cajas = [] } = useQuery({
@@ -424,6 +438,8 @@ export function BilleteraPage() {
                   key={m.id}
                   m={m}
                   onDetalle={() => setDetalleId(m.id)}
+                  selected={seleccionados.has(m.id)}
+                  onToggleSelected={() => toggleSeleccionado(m.id)}
                 />
               ))}
             </TableBody>
@@ -542,7 +558,95 @@ export function BilleteraPage() {
           onClose={() => setOpenFiltrosMovsMobile(false)}
         />
       )}
+
+      {/* Panel flotante draggable con la suma de los movimientos seleccionados
+          (reunión Dani 26/11 — idea "podría ser"). Aparece abajo-derecha al
+          marcar el primer checkbox y se cierra con la X o con "Limpiar". */}
+      {seleccionados.size > 0 && (
+        <PanelSeleccion
+          movimientos={(listado?.data ?? []).filter((m) => seleccionados.has(m.id))}
+          totalSeleccionados={seleccionados.size}
+          onClose={limpiarSeleccion}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Contenido del panel flotante: cuenta + ingresos/egresos/neto en ARS y USD.
+ * Trabaja solo con los movimientos actualmente visibles en la página. Si el
+ * usuario paginó, los seleccionados de otras páginas no aparecen acá (quedan
+ * en el Set pero no suman hasta volver a esa página).
+ */
+function PanelSeleccion({
+  movimientos,
+  totalSeleccionados,
+  onClose,
+}: {
+  movimientos: Movimiento[];
+  totalSeleccionados: number;
+  onClose: () => void;
+}) {
+  let ingArs = 0,
+    egrArs = 0,
+    ingUsd = 0,
+    egrUsd = 0;
+  for (const m of movimientos) {
+    if (m.estado !== 'CONFIRMADO') continue;
+    const ars = Number(m.montoArs);
+    const usd = Number(m.montoUsd);
+    if (m.tipo === 'INGRESO') {
+      ingArs += ars;
+      ingUsd += usd;
+    } else if (m.tipo === 'EGRESO') {
+      egrArs += ars;
+      egrUsd += usd;
+    }
+  }
+  const netoArs = ingArs - egrArs;
+  const netoUsd = ingUsd - egrUsd;
+  const noEnPagina = totalSeleccionados - movimientos.length;
+
+  return (
+    <PanelFlotante
+      title={`${totalSeleccionados} seleccionado${totalSeleccionados === 1 ? '' : 's'}`}
+      onClose={onClose}
+    >
+      <div className="space-y-2 text-xs">
+        {noEnPagina > 0 && (
+          <div className="text-[10px] text-muted italic">
+            {noEnPagina} fuera de esta página (los totales no los incluyen)
+          </div>
+        )}
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-baseline">
+          <span className="text-success">Ingresos:</span>
+          <span className="text-right num font-medium text-success">
+            + {formatearMonto(ingArs, 'ARS')}
+          </span>
+          <span className="text-danger">Egresos:</span>
+          <span className="text-right num font-medium text-danger">
+            − {formatearMonto(egrArs, 'ARS')}
+          </span>
+          <span className="font-semibold text-foreground pt-1 border-t border-border/50">Neto ARS:</span>
+          <span
+            className={`text-right num font-bold pt-1 border-t border-border/50 ${
+              netoArs < 0 ? 'text-danger' : netoArs > 0 ? 'text-success' : 'text-muted'
+            }`}
+          >
+            {formatearMonto(netoArs, 'ARS')}
+          </span>
+          <span className="text-muted text-[11px]">Neto USD:</span>
+          <span
+            className={`text-right num text-[11px] ${
+              netoUsd < 0 ? 'text-danger' : netoUsd > 0 ? 'text-success' : 'text-muted'
+            }`}
+          >
+            {formatearMonto(netoUsd, 'USD')}
+          </span>
+        </div>
+      </div>
+    </PanelFlotante>
   );
 }
 
@@ -712,14 +816,47 @@ function FiltrosMovimientosMobile({
 // Sub-componentes
 // ======================================================================
 
-function MovimientoRow({ m, onDetalle }: { m: Movimiento; onDetalle: () => void }) {
+function MovimientoRow({
+  m,
+  onDetalle,
+  selected,
+  onToggleSelected,
+}: {
+  m: Movimiento;
+  onDetalle: () => void;
+  selected: boolean;
+  onToggleSelected: () => void;
+}) {
   const obras =
     m.imputaciones?.length
       ? m.imputaciones.map((i) => i.obra.nombre).join(', ')
       : null;
   return (
-    <TableRow onClick={onDetalle} className="cursor-pointer hover:bg-muted/5 transition-colors">
-      <TableCell className="num">{formatearFecha(m.fecha)}</TableCell>
+    <TableRow
+      onClick={onDetalle}
+      className={`cursor-pointer hover:bg-muted/5 transition-colors ${selected ? 'bg-primary/5' : ''}`}
+    >
+      <TableCell
+        className="num"
+        onClick={(e) => {
+          // Click en la fecha (primera celda) alterna selección sin abrir el detalle.
+          // El checkbox va acá embebido para no agregar una columna extra.
+          if ((e.target as HTMLElement).tagName === 'INPUT') return;
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelected}
+            onClick={(e) => e.stopPropagation()}
+            className="h-3.5 w-3.5 accent-primary cursor-pointer shrink-0"
+            aria-label="Seleccionar movimiento"
+            title="Seleccionar para sumar"
+          />
+          <span>{formatearFecha(m.fecha)}</span>
+        </div>
+      </TableCell>
       <TableCell>
         <Badge
           variant={
