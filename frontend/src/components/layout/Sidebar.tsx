@@ -14,6 +14,8 @@ import {
   Sun,
   Monitor,
   X,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -40,9 +42,12 @@ type Props = {
   /** Controla la apertura del drawer en pantallas < md. En desktop se ignora (siempre visible). */
   open: boolean;
   onClose: () => void;
+  /** En desktop: colapsa el sidebar a solo íconos. Persistido por AppLayout. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 
-export function Sidebar({ open, onClose }: Props) {
+export function Sidebar({ open, onClose, collapsed, onToggleCollapsed }: Props) {
   const { usuario, refreshToken, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,14 +100,32 @@ export function Sidebar({ open, onClose }: Props) {
 
       <aside
         className={cn(
-          'fixed md:static inset-y-0 left-0 z-50 w-64 md:w-60 h-full flex flex-col shrink-0',
+          'fixed md:static inset-y-0 left-0 z-50 h-full flex flex-col shrink-0',
           'border-r border-border bg-card',
-          'transform transition-transform duration-200 ease-out',
+          'transform transition-[transform,width] duration-200 ease-out',
+          // Mobile: ancho fijo 64; desktop: 56 si colapsado, 52 si no.
+          // Reunión Dani 26/11: sidebar más angosto que antes (w-60 → w-52).
+          'w-64',
+          collapsed ? 'md:w-16' : 'md:w-52',
           open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
-        <div className="h-24 flex items-center justify-center px-4 border-b border-border relative">
-          <Logo />
+        <div
+          className={cn(
+            'h-24 flex items-center px-4 border-b border-border relative',
+            collapsed ? 'md:justify-center md:px-2' : 'justify-center',
+          )}
+        >
+          {collapsed ? (
+            // Logo reducido: solo la "C" grande centrada
+            <div className="hidden md:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary font-bold text-lg">
+              C
+            </div>
+          ) : (
+            <Logo />
+          )}
+          {/* En mobile el logo completo se muestra siempre (ignora collapsed) */}
+          {collapsed && <div className="md:hidden"><Logo /></div>}
           <button
             type="button"
             onClick={onClose}
@@ -111,72 +134,96 @@ export function Sidebar({ open, onClose }: Props) {
           >
             <X className="h-5 w-5" />
           </button>
+          {/* Botón colapsar/expandir — solo desktop */}
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground shadow-sm z-10"
+          >
+            {collapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
+          </button>
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
           {NAV.map((item) => (
-            <SidebarItem key={item.to} {...item} />
+            <SidebarItem key={item.to} {...item} collapsed={collapsed} />
           ))}
 
           {esAdmin && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Administración
-              </div>
+              {!collapsed && (
+                <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Administración
+                </div>
+              )}
+              {collapsed && <div className="pt-4 border-t border-border/50 mx-2" />}
               {ADMIN_NAV.map((item) => (
-                <SidebarItem key={item.to} {...item} />
+                <SidebarItem key={item.to} {...item} collapsed={collapsed} />
               ))}
             </>
           )}
         </nav>
         <div className="border-t border-border p-3 space-y-2">
-          {/* Toggle de tema */}
-          <div className="flex items-center gap-1 bg-muted/10 rounded-md p-0.5">
-            {([
-              { v: 'light', icon: Sun, label: 'Claro' },
-              { v: 'system', icon: Monitor, label: 'Sistema' },
-              { v: 'dark', icon: Moon, label: 'Oscuro' },
-            ] as Array<{ v: Tema; icon: typeof Sun; label: string }>).map((opt) => {
-              const Icon = opt.icon;
-              const activo = tema === opt.v;
-              return (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setTema(opt.v)}
-                  title={opt.label}
-                  aria-label={`Tema ${opt.label.toLowerCase()}`}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-1 py-1 rounded transition-colors text-[11px]',
-                    activo
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              );
-            })}
-          </div>
+          {/* Toggle de tema — oculto cuando está colapsado (ocupa mucho) */}
+          {!collapsed && (
+            <div className="flex items-center gap-1 bg-muted/10 rounded-md p-0.5">
+              {([
+                { v: 'light', icon: Sun, label: 'Claro' },
+                { v: 'system', icon: Monitor, label: 'Sistema' },
+                { v: 'dark', icon: Moon, label: 'Oscuro' },
+              ] as Array<{ v: Tema; icon: typeof Sun; label: string }>).map((opt) => {
+                const Icon = opt.icon;
+                const activo = tema === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setTema(opt.v)}
+                    title={opt.label}
+                    aria-label={`Tema ${opt.label.toLowerCase()}`}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-1 py-1 rounded transition-colors text-[11px]',
+                      activo
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center font-semibold text-sm shrink-0">
+          <div className={cn('flex items-center gap-2', collapsed && 'md:justify-center')}>
+            <div
+              className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center font-semibold text-sm shrink-0"
+              title={collapsed ? (usuario?.nombre ?? usuario?.username ?? 'Usuario') : undefined}
+            >
               {inicial}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium truncate">
-                {usuario?.nombre ?? usuario?.username ?? 'Usuario'}
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">
+                  {usuario?.nombre ?? usuario?.username ?? 'Usuario'}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-muted">
+                  {usuario?.rol ?? '—'}
+                </div>
               </div>
-              <div className="text-[10px] uppercase tracking-wider text-muted">
-                {usuario?.rol ?? '—'}
-              </div>
-            </div>
+            )}
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-muted hover:text-foreground hover:bg-muted/10 rounded-md transition-colors"
+            title={collapsed ? 'Cerrar sesión' : undefined}
+            className={cn(
+              'w-full flex items-center gap-2 px-2 py-1.5 text-xs text-muted hover:text-foreground hover:bg-muted/10 rounded-md transition-colors',
+              collapsed && 'md:justify-center',
+            )}
           >
-            <LogOut className="h-3.5 w-3.5" />
-            Cerrar sesión
+            <LogOut className="h-3.5 w-3.5 shrink-0" />
+            {!collapsed && 'Cerrar sesión'}
           </button>
         </div>
       </aside>
@@ -189,27 +236,31 @@ function SidebarItem({
   label,
   icon: Icon,
   end,
+  collapsed,
 }: {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   end?: boolean;
+  collapsed?: boolean;
 }) {
   return (
     <NavLink
       to={to}
       end={end}
+      title={collapsed ? label : undefined}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors',
+          collapsed && 'md:justify-center md:px-2',
           isActive
             ? 'bg-primary/10 text-primary font-medium'
             : 'text-foreground hover:bg-muted/10',
         )
       }
     >
-      <Icon className="h-4 w-4" />
-      {label}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className={cn(collapsed && 'md:hidden')}>{label}</span>
     </NavLink>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -12,9 +12,7 @@ import {
   Search,
   ScrollText,
   Settings2,
-  TrendingDown,
   TrendingUp,
-  Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +85,6 @@ export function BilleteraPage() {
   const [openCartera, setOpenCartera] = useState(false);
   const [openNuevoCheque, setOpenNuevoCheque] = useState(false);
   const [openCuentas, setOpenCuentas] = useState(false);
-  const [openFiltrosMobile, setOpenFiltrosMobile] = useState(false);
   const [openFiltrosMovsMobile, setOpenFiltrosMovsMobile] = useState(false);
 
   // ---------- Data ----------
@@ -136,28 +133,6 @@ export function BilleteraPage() {
     setPage(1);
   }, [cajaId, tipo, obraId, categoriaId, beneficiarioId, desde, hasta, q, pageSize]);
 
-  // ---------- Totales ----------
-  const totales = useMemo(() => {
-    let saldoArs = 0;
-    let saldoUsd = 0;
-    for (const s of saldos) {
-      if (cajaId && s.cajaId !== cajaId) continue;
-      if (s.moneda === 'ARS' && moneda !== 'USD') saldoArs += Number(s.saldo);
-      if (s.moneda === 'USD' && moneda !== 'ARS') saldoUsd += Number(s.saldo);
-    }
-    let ingresos = 0;
-    let egresos = 0;
-    for (const m of listado?.data ?? []) {
-      if (m.estado !== 'CONFIRMADO') continue;
-      const monto = Number(m.monto);
-      if (m.tipo === 'INGRESO') ingresos += monto;
-      if (m.tipo === 'EGRESO') egresos += monto;
-    }
-    return { saldoArs, saldoUsd, ingresos, egresos };
-  }, [saldos, cajaId, moneda, listado]);
-
-  const monedaCajaSel = cajas.find((c) => c.id === cajaId)?.moneda;
-
   // ---------- Acciones ----------
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [editarMov, setEditarMov] = useState<Movimiento | null>(null);
@@ -202,35 +177,21 @@ export function BilleteraPage() {
     // -m-* neutraliza el padding del <main>; el h-[calc(100%+N)] compensa
     // ese padding en la altura para que la Billetera ocupe el main completo.
     <div className="-m-4 sm:-m-6 lg:-m-8 h-[calc(100%+2rem)] sm:h-[calc(100%+3rem)] lg:h-[calc(100%+4rem)] flex flex-col">
-      {/* ==================== HERO ==================== */}
+      {/* ==================== HERO COMPACTO (reunión Dani 26/11) ====================
+          Solo: título + saldo por caja (fila compacta). Nada de subtítulo,
+          nada de totales de ingresos/egresos, nada de filtros arriba
+          (los filtros bajaron a la barra de la tabla). */}
       <div
-        className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-6 pb-8 shadow-lg"
+        className="shrink-0 relative bg-accent text-white px-4 sm:px-8 lg:px-12 pt-4 pb-4 shadow-lg"
         style={{
           backgroundImage:
-            'radial-gradient(500px 220px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 220px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
+            'radial-gradient(500px 180px at 15% -40px, rgba(67,144,182,0.5), transparent 70%), radial-gradient(500px 180px at 85% -20px, rgba(100,180,220,0.3), transparent 70%)',
         }}
       >
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Billetera</h1>
-            <p className="text-sm text-white/60">
-              Cajas, movimientos, cheques y cotización — todo en un solo lugar.
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <h1 className="text-xl font-bold tracking-tight">Billetera</h1>
           <div className="flex gap-2 flex-wrap items-center">
             <CotizacionBadge variant="dark" />
-            {/* Botón Filtros — solo mobile */}
-            <Button
-              variant="outline"
-              onClick={() => setOpenFiltrosMobile(true)}
-              className="md:hidden bg-white/10 border-white/20 text-white hover:bg-white/20"
-            >
-              <Filter className="h-4 w-4 mr-1" />
-              Filtros
-              {(cajaId || moneda !== 'TODAS') && (
-                <span className="ml-1 h-2 w-2 rounded-full bg-primary" />
-              )}
-            </Button>
             <NuevoMenu
               onIngreso={() => setOpenIngreso(true)}
               onEgreso={() => setOpenEgreso(true)}
@@ -246,131 +207,19 @@ export function BilleteraPage() {
           </div>
         </div>
 
-        {/* Filtros — solo desktop (en mobile van al dialog "Filtros") */}
-        <div className="hidden md:grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
-              Caja
-            </label>
-            <Combobox
-              variant="dark"
-              options={cajas.map((c) => ({
-                value: c.id,
-                label: c.nombre,
-                hint: c.moneda,
-              }))}
-              value={cajaId}
-              onChange={setCajaId}
-              allLabel="Todas las cajas"
-              searchPlaceholder="Buscar caja…"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
-              Moneda
-            </label>
-            <Select
-              value={moneda}
-              onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}
-              className="bg-white/10 border-white/20 text-white"
-            >
-              <option value="TODAS" className="text-foreground">
-                Todas
-              </option>
-              <option value="ARS" className="text-foreground">
-                ARS
-              </option>
-              <option value="USD" className="text-foreground">
-                USD
-              </option>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
-              Desde
-            </label>
-            <Input
-              type="date"
-              value={desde}
-              onChange={(e) => setDesde(e.target.value)}
-              className="bg-white/10 border-white/20 text-white [color-scheme:dark]"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-white/50 block mb-1">
-              Hasta
-            </label>
-            <Input
-              type="date"
-              value={hasta}
-              onChange={(e) => setHasta(e.target.value)}
-              className="bg-white/10 border-white/20 text-white [color-scheme:dark]"
-            />
-          </div>
-        </div>
-
-        {/* Stats cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <BigStatCard
-            titulo="Saldos"
-            subtitulo={cajaId ? cajas.find((c) => c.id === cajaId)?.nombre ?? '' : 'Todas las cajas'}
-            items={(() => {
-              const monedaEfectiva: 'ARS' | 'USD' | undefined =
-                monedaCajaSel ?? (moneda !== 'TODAS' ? moneda : undefined);
-              const items = [];
-              if (!monedaEfectiva || monedaEfectiva === 'ARS') {
-                items.push({
-                  label: 'ARS',
-                  simbolo: '$',
-                  value: totales.saldoArs,
-                  color: totales.saldoArs < 0 ? 'text-red-300' : 'text-white',
-                  icon: <Wallet className="h-3 w-3" />,
-                });
-              }
-              if (!monedaEfectiva || monedaEfectiva === 'USD') {
-                items.push({
-                  label: 'USD',
-                  simbolo: 'US$',
-                  value: totales.saldoUsd,
-                  color: totales.saldoUsd < 0 ? 'text-red-300' : 'text-white',
-                  icon: <Wallet className="h-3 w-3" />,
-                });
-              }
-              return items;
-            })()}
-          />
-          <BigStatCard
-            titulo={`Movimientos · ${rangoLabel(desde, hasta)}`}
-            subtitulo={`${listado?.total ?? 0} registros`}
-            items={[
-              {
-                label: 'Ingresos',
-                simbolo: '+',
-                value: totales.ingresos,
-                color: 'text-emerald-300',
-                icon: <TrendingUp className="h-3 w-3" />,
-              },
-              {
-                label: 'Egresos',
-                simbolo: '−',
-                value: totales.egresos,
-                color: 'text-red-300',
-                icon: <TrendingDown className="h-3 w-3" />,
-              },
-            ]}
-          />
-        </div>
+        {/* Saldo por caja — una chip chica por caja, grilla responsive */}
+        <SaldosCajasCompacto cajas={cajas} saldos={saldos} />
       </div>
 
       {/* ==================== BODY (hero → filtros → tabla scroll → footer) ==================== */}
       <div className="flex-1 min-h-0 flex flex-col bg-card">
-        {/* Filtros fijos arriba */}
-        <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-3 bg-card">
-          <div className="flex items-center justify-between gap-3 lg:justify-start lg:gap-6">
-            <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
+        {/* Barra de filtros (todos combinables) — reunión Dani 26/11 */}
+        <div className="shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 py-2.5 bg-card">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider shrink-0">
               Movimientos
             </h2>
-            {/* Botón Filtros — solo mobile */}
+            {/* Mobile: dialog de filtros (más compacto que tener 8 combos en pantalla chica) */}
             <Button
               variant="outline"
               size="sm"
@@ -379,14 +228,51 @@ export function BilleteraPage() {
             >
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(tipo || obraId || categoriaId || beneficiarioId || q) && (
+              {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
                 <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
               )}
             </Button>
-            <div className="hidden md:grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Desktop: todos los filtros en línea (combinables). Fecha + Caja + Moneda
+                son los "primarios"; después tipo/obra/categoría/proveedor + buscador. */}
+            <div className="hidden md:flex flex-wrap items-center gap-2 flex-1">
+              <Input
+                type="date"
+                value={desde}
+                onChange={(e) => setDesde(e.target.value)}
+                className="h-8 w-[130px] text-xs"
+                aria-label="Desde"
+                title="Desde"
+              />
+              <span className="text-xs text-muted">→</span>
+              <Input
+                type="date"
+                value={hasta}
+                onChange={(e) => setHasta(e.target.value)}
+                className="h-8 w-[130px] text-xs"
+                aria-label="Hasta"
+                title="Hasta"
+              />
               <Combobox
                 size="sm"
-                className="w-full lg:w-36"
+                className="w-40"
+                options={cajas.map((c) => ({ value: c.id, label: c.nombre, hint: c.moneda }))}
+                value={cajaId}
+                onChange={setCajaId}
+                allLabel="Caja: todas"
+                searchPlaceholder="Buscar caja…"
+              />
+              <Select
+                value={moneda}
+                onChange={(e) => setMoneda(e.target.value as MonedaFiltro)}
+                className="h-8 w-[110px] text-xs"
+              >
+                <option value="TODAS">Moneda: todas</option>
+                <option value="ARS">ARS</option>
+                <option value="USD">USD</option>
+              </Select>
+              <Combobox
+                size="sm"
+                className="w-32"
                 options={[
                   { value: 'INGRESO', label: 'Ingresos' },
                   { value: 'EGRESO', label: 'Egresos' },
@@ -398,7 +284,7 @@ export function BilleteraPage() {
               />
               <Combobox
                 size="sm"
-                className="w-full lg:w-48"
+                className="w-44"
                 options={obras.map((o) => ({ value: o.id, label: o.nombre, hint: o.tipo }))}
                 value={obraId}
                 onChange={setObraId}
@@ -408,7 +294,7 @@ export function BilleteraPage() {
               />
               <Combobox
                 size="sm"
-                className="w-full lg:w-52"
+                className="w-48"
                 options={categorias.map((c) => ({
                   value: c.id,
                   label: c.nombre,
@@ -422,7 +308,7 @@ export function BilleteraPage() {
               />
               <Combobox
                 size="sm"
-                className="w-full lg:w-52"
+                className="w-48"
                 options={benes.map((b) => ({ value: b.id, label: b.nombre, hint: b.tipo }))}
                 value={beneficiarioId}
                 onChange={setBeneficiarioId}
@@ -430,22 +316,24 @@ export function BilleteraPage() {
                 searchPlaceholder="Buscar…"
                 emptyText="Sin coincidencias"
               />
-              <div className="relative col-span-2 sm:col-span-3 lg:col-span-1">
+              <div className="relative">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
                 <Input
                   data-mov-search
-                  placeholder="Buscar en descripción… (/)"
+                  placeholder="Buscar… (/)"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  className="pl-7 h-8 text-xs w-full lg:w-60"
+                  className="pl-7 h-8 text-xs w-48"
                 />
               </div>
-              {(tipo || obraId || categoriaId || beneficiarioId || q) && (
+              {(cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 text-xs col-span-2 sm:col-span-3 lg:col-span-1"
+                  className="h-8 text-xs"
                   onClick={() => {
+                    setCajaId('');
+                    setMoneda('TODAS');
                     setTipo('');
                     setObraId('');
                     setCategoriaId('');
@@ -456,34 +344,38 @@ export function BilleteraPage() {
                   Limpiar
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs"
-                onClick={async () => {
-                  try {
-                    const blob = await movimientosService.pdfBlob({
-                      cajaId: cajaId || undefined,
-                      tipo: tipo || undefined,
-                      obraId: obraId || undefined,
-                      categoriaId: categoriaId || undefined,
-                      beneficiarioId: beneficiarioId || undefined,
-                      desde,
-                      hasta,
-                      q: q || undefined,
-                    });
-                    const url = URL.createObjectURL(blob);
-                    window.open(url, '_blank');
-                    // Liberar después de que el browser lo abra
-                    setTimeout(() => URL.revokeObjectURL(url), 30_000);
-                  } catch {
-                    toast.error('No se pudo generar el PDF');
-                  }
-                }}
-              >
-                <Printer className="h-3.5 w-3.5 mr-1" />
-                Imprimir
-              </Button>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-[11px] text-muted">
+                  {listado?.total ?? 0} registros
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={async () => {
+                    try {
+                      const blob = await movimientosService.pdfBlob({
+                        cajaId: cajaId || undefined,
+                        tipo: tipo || undefined,
+                        obraId: obraId || undefined,
+                        categoriaId: categoriaId || undefined,
+                        beneficiarioId: beneficiarioId || undefined,
+                        desde,
+                        hasta,
+                        q: q || undefined,
+                      });
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                    } catch {
+                      toast.error('No se pudo generar el PDF');
+                    }
+                  }}
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1" />
+                  Imprimir
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -551,7 +443,7 @@ export function BilleteraPage() {
               <kbd className="px-1 border rounded">t</kbd> transferir ·{' '}
               <kbd className="px-1 border rounded">/</kbd> buscar
             </span>
-            <span>Moneda caja filtrada: {monedaCajaSel ?? '—'}</span>
+            <span>{cajaId ? `Caja: ${cajas.find((c) => c.id === cajaId)?.nombre ?? '—'}` : 'Todas las cajas'}</span>
           </div>
         </div>
       </div>
@@ -615,9 +507,10 @@ export function BilleteraPage() {
         onSaved={refrescar}
       />
 
-      {/* ==================== DIALOGS DE FILTROS (mobile) ==================== */}
-      {openFiltrosMobile && (
-        <FiltrosGlobalesMobile
+      {/* Dialog único de filtros (mobile) — ahora cubre todo: fecha, caja,
+          moneda, tipo, obra, categoría, proveedor, buscador. */}
+      {openFiltrosMovsMobile && (
+        <FiltrosMovimientosMobile
           cajas={cajas}
           cajaId={cajaId}
           setCajaId={setCajaId}
@@ -627,11 +520,6 @@ export function BilleteraPage() {
           setDesde={setDesde}
           hasta={hasta}
           setHasta={setHasta}
-          onClose={() => setOpenFiltrosMobile(false)}
-        />
-      )}
-      {openFiltrosMovsMobile && (
-        <FiltrosMovimientosMobile
           obras={obras}
           categorias={categorias}
           benes={benes}
@@ -653,10 +541,10 @@ export function BilleteraPage() {
 }
 
 // ======================================================================
-// Dialogs de filtros mobile
+// Dialog único de filtros (mobile)
 // ======================================================================
 
-function FiltrosGlobalesMobile({
+function FiltrosMovimientosMobile({
   cajas,
   cajaId,
   setCajaId,
@@ -666,6 +554,19 @@ function FiltrosGlobalesMobile({
   setDesde,
   hasta,
   setHasta,
+  obras,
+  categorias,
+  benes,
+  tipo,
+  setTipo,
+  obraId,
+  setObraId,
+  categoriaId,
+  setCategoriaId,
+  beneficiarioId,
+  setBeneficiarioId,
+  q,
+  setQ,
   onClose,
 }: {
   cajas: Array<{ id: string; nombre: string; moneda: string }>;
@@ -677,8 +578,23 @@ function FiltrosGlobalesMobile({
   setDesde: (v: string) => void;
   hasta: string;
   setHasta: (v: string) => void;
+  obras: Array<{ id: string; nombre: string; tipo: string }>;
+  categorias: Array<{ id: string; codigo: string; nombre: string }>;
+  benes: Array<{ id: string; nombre: string; tipo: string }>;
+  tipo: TipoMovimiento | '';
+  setTipo: (v: TipoMovimiento | '') => void;
+  obraId: string;
+  setObraId: (v: string) => void;
+  categoriaId: string;
+  setCategoriaId: (v: string) => void;
+  beneficiarioId: string;
+  setBeneficiarioId: (v: string) => void;
+  q: string;
+  setQ: (v: string) => void;
   onClose: () => void;
 }) {
+  const hayFiltro =
+    cajaId || moneda !== 'TODAS' || tipo || obraId || categoriaId || beneficiarioId || q;
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
@@ -686,6 +602,16 @@ function FiltrosGlobalesMobile({
           <DialogTitle>Filtros</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Desde</Label>
+              <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Hasta</Label>
+              <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </div>
+          </div>
           <div className="space-y-2">
             <Label>Caja</Label>
             <Combobox
@@ -704,63 +630,6 @@ function FiltrosGlobalesMobile({
               <option value="USD">USD</option>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Desde</Label>
-              <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Hasta</Label>
-              <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onClose}>Aplicar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function FiltrosMovimientosMobile({
-  obras,
-  categorias,
-  benes,
-  tipo,
-  setTipo,
-  obraId,
-  setObraId,
-  categoriaId,
-  setCategoriaId,
-  beneficiarioId,
-  setBeneficiarioId,
-  q,
-  setQ,
-  onClose,
-}: {
-  obras: Array<{ id: string; nombre: string; tipo: string }>;
-  categorias: Array<{ id: string; codigo: string; nombre: string }>;
-  benes: Array<{ id: string; nombre: string; tipo: string }>;
-  tipo: TipoMovimiento | '';
-  setTipo: (v: TipoMovimiento | '') => void;
-  obraId: string;
-  setObraId: (v: string) => void;
-  categoriaId: string;
-  setCategoriaId: (v: string) => void;
-  beneficiarioId: string;
-  setBeneficiarioId: (v: string) => void;
-  q: string;
-  setQ: (v: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Filtros de movimientos</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
           <div className="space-y-2">
             <Label>Tipo</Label>
             <Combobox
@@ -807,11 +676,13 @@ function FiltrosMovimientosMobile({
             <Label>Buscar en descripción</Label>
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Texto libre…" />
           </div>
-          {(tipo || obraId || categoriaId || beneficiarioId || q) && (
+          {hayFiltro && (
             <Button
               variant="outline"
               className="w-full"
               onClick={() => {
+                setCajaId('');
+                setMoneda('TODAS');
                 setTipo('');
                 setObraId('');
                 setCategoriaId('');
@@ -880,61 +751,64 @@ function MovimientoRow({ m, onDetalle }: { m: Movimiento; onDetalle: () => void 
   );
 }
 
-function BigStatCard({
-  titulo,
-  subtitulo,
-  items,
-  footer,
+/**
+ * Lista compacta de saldos por caja (reunión Dani 26/11). Reemplazó al
+ * BigStatCard con totales por moneda y al card de "Movimientos" con
+ * ingresos/egresos. Objetivo: ver todas las cajas de un vistazo y dejar
+ * más espacio para la tabla.
+ *
+ * Una card chica por caja: nombre arriba, saldo abajo (con FitText para
+ * que siempre entre). Grilla responsive.
+ */
+function SaldosCajasCompacto({
+  cajas,
+  saldos,
 }: {
-  titulo: string;
-  subtitulo?: string;
-  items: Array<{
-    label: string;
-    simbolo: string;
-    value: number;
-    color?: string;
-    icon?: React.ReactNode;
-  }>;
-  footer?: React.ReactNode;
+  cajas: Array<{ id: string; nombre: string; moneda: 'ARS' | 'USD' }>;
+  saldos: Array<{ cajaId: string; saldo: string | number; moneda: string }>;
 }) {
-  return (
-    <div className="rounded-xl bg-white/[0.06] border border-white/10 p-4 backdrop-blur-sm">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-white/70">
-          {titulo}
-        </div>
-        {subtitulo && <div className="text-[11px] text-white/40 truncate ml-2">{subtitulo}</div>}
+  // Saldo por cajaId (lookup O(1))
+  const porCaja = new Map(saldos.map((s) => [s.cajaId, Number(s.saldo)]));
+
+  if (cajas.length === 0) {
+    return (
+      <div className="rounded-lg bg-white/[0.06] border border-white/10 p-3 text-xs text-white/60">
+        No hay cajas cargadas. Creá una desde Herramientas → Cuentas.
       </div>
-      <div className={`grid gap-4 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {items.map((it, i) => {
-          const nfmt = it.value.toLocaleString('es-AR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          });
-          return (
-            // min-w-0 crítico en grid → permite al hijo achicarse por debajo de
-            // su ancho intrínseco. Sin esto el FitText no tiene presión para
-            // reducirse y se desborda el grid.
-            <div key={i} className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/50 flex items-center gap-1">
-                {it.icon}
-                {it.label}
-              </div>
-              <div className={`mt-1 flex items-baseline gap-1 min-w-0 ${it.color ?? 'text-white'}`}>
-                <span className="text-base text-white/60 shrink-0">{it.simbolo}</span>
-                {/* min-w-0 + flex-1 para que FitText mida el ancho real
-                    disponible (sin esto el padre crecería hasta el contenido) */}
-                <div className="flex-1 min-w-0">
-                  <FitText className="font-bold" maxSize={30} minSize={14}>
-                    {nfmt}
-                  </FitText>
-                </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+      {cajas.map((c) => {
+        const saldo = porCaja.get(c.id) ?? 0;
+        const neg = saldo < 0;
+        const simbolo = c.moneda === 'USD' ? 'US$' : '$';
+        const nfmt = saldo.toLocaleString('es-AR', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        return (
+          <div
+            key={c.id}
+            className="min-w-0 rounded-lg bg-white/[0.06] border border-white/10 px-3 py-2 backdrop-blur-sm"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/60 truncate">
+              {c.nombre}
+            </div>
+            <div
+              className={`mt-0.5 flex items-baseline gap-1 min-w-0 ${neg ? 'text-red-300' : 'text-white'}`}
+            >
+              <span className="text-xs text-white/50 shrink-0">{simbolo}</span>
+              <div className="flex-1 min-w-0">
+                <FitText className="font-bold" maxSize={22} minSize={12}>
+                  {nfmt}
+                </FitText>
               </div>
             </div>
-          );
-        })}
-      </div>
-      {footer && <div className="mt-3 pt-3 border-t border-white/10">{footer}</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1115,11 +989,4 @@ function inicioMesActual(): string {
 }
 function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
-}
-function rangoLabel(desde: string, hasta: string): string {
-  const short = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-  };
-  return `${short(desde)} — ${short(hasta)}`;
 }

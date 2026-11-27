@@ -53,6 +53,8 @@ export function NuevoEgresoDialog({
   onOpenChange,
   onCreated,
   beneficiarioInicialId,
+  cajaInicialId,
+  chequeInicialId,
   imputacionesSugeridas,
 }: {
   open: boolean;
@@ -61,6 +63,12 @@ export function NuevoEgresoDialog({
   /** Si viene, el beneficiario arranca pre-seleccionado (útil para pagar
    * desde la pantalla de un proveedor). El usuario puede cambiarlo igual. */
   beneficiarioInicialId?: string;
+  /** Si viene, la caja arranca pre-seleccionada (útil para "Pagar/Derivar"
+   * desde un cheque recién cargado: la caja es la de Cheques donde entró). */
+  cajaInicialId?: string;
+  /** Si viene, el cheque arranca pre-seleccionado y el tipo del egreso se
+   * fuerza a PROVEEDOR (flujo "Derivar" desde el modal de nuevo cheque). */
+  chequeInicialId?: string;
   /** Para pago a proveedor: arrancar con las obras que tienen saldo
    * pendiente, con montos en 0 editables. El usuario ingresa cuánto le
    * paga a cada una (puede dejar menos, igual o más que el saldo). */
@@ -69,7 +77,7 @@ export function NuevoEgresoDialog({
   const qc = useQueryClient();
   const [nuevaCatOpen, setNuevaCatOpen] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
-  const [cajaId, setCajaId] = useState('');
+  const [cajaId, setCajaId] = useState(cajaInicialId ?? '');
   const [monto, setMonto] = useState('');
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO');
   const [beneficiarioId, setBeneficiarioId] = useState(beneficiarioInicialId ?? '');
@@ -80,14 +88,21 @@ export function NuevoEgresoDialog({
       ? imputacionesSugeridas.map((s) => ({ obraId: s.obraId, monto: '' }))
       : [{ obraId: '', monto: '' }],
   );
-  const [chequeId, setChequeId] = useState('');
+  const [chequeId, setChequeId] = useState(chequeInicialId ?? '');
   // Reunión Dani 18/11: tipo primero, después se filtran las categorías y la
   // UI del reparto (obras vs vehículos). Si viene imputacionesSugeridas (pago
-  // a proveedor desde el detalle del proveedor), arrancamos en PROVEEDOR.
+  // a proveedor desde el detalle del proveedor) o si venimos derivando un
+  // cheque recién creado, arrancamos en PROVEEDOR.
   const [tipoEgreso, setTipoEgreso] = useState<TipoEgreso | ''>(
-    imputacionesSugeridas && imputacionesSugeridas.length > 0 ? 'PROVEEDOR' : '',
+    (imputacionesSugeridas && imputacionesSugeridas.length > 0) || chequeInicialId
+      ? 'PROVEEDOR'
+      : '',
   );
   const [lineasVeh, setLineasVeh] = useState<LineaVehiculo[]>([]);
+  // Reunión Dani 26/11: el egreso General no debe pedir imputación por obra.
+  // Si el usuario quiere ver/modificar el reparto que se generará, toca
+  // "Ver detalle de imputación".
+  const [verDetalleImputacionGeneral, setVerDetalleImputacionGeneral] = useState(false);
 
   const { data: cajas = [] } = useQuery({
     queryKey: ['cajas', 'activas'],
@@ -138,6 +153,14 @@ export function NuevoEgresoDialog({
   const diferencia = totalNum - sumaLineas;
   const disponibleCheque = chequeSel ? Number(chequeSel.monto) - sumaLineas : 0;
 
+  // Modo "General automático": tipo=General y el usuario no abrió el detalle.
+  // Reparte el monto en partes iguales entre obras ACTIVAS sin pedir nada.
+  const obrasActivasParaReparto = useMemo(
+    () => obras.filter((o) => o.estado === 'ACTIVA'),
+    [obras],
+  );
+  const modoGeneralAuto = tipoEgreso === 'GENERAL' && !verDetalleImputacionGeneral;
+
   const esPrestamoEmpleado = categoriaSel?.codigo === 'PREST_EMP';
   const beneficiarioSel = benes.find((b) => b.id === beneficiarioId);
   const prestamoRequiereEmpleado =
@@ -178,6 +201,12 @@ export function NuevoEgresoDialog({
     if (prestamoRequiereEmpleado) return false;
     if (modoCheque && !chequeId) return false;
 
+    // Modo General automático: alcanza con caja + monto + categoría.
+    // Reparte solo entre obras activas (al menos una tiene que haber).
+    if (modoGeneralAuto) {
+      return obrasActivasParaReparto.length > 0;
+    }
+
     // Modo vehículos: al menos una línea con vehículo+monto, suma = total
     if (modoVehiculos) {
       const conMonto = lineasVeh.filter((l) => l.vehiculoId && Number(l.monto) > 0);
@@ -210,6 +239,8 @@ export function NuevoEgresoDialog({
     diferencia,
     diferenciaVeh,
     modoVehiculos,
+    modoGeneralAuto,
+    obrasActivasParaReparto.length,
     prestamoRequiereEmpleado,
     modoCheque,
     chequeId,
@@ -237,7 +268,18 @@ export function NuevoEgresoDialog({
       }
       // Modo normal: imputación a obras
       let imputaciones: Array<{ obraId: string; monto: number }>;
-      if (esPagoProveedor) {
+      if (modoGeneralAuto) {
+        // Reparto automático en partes iguales entre obras ACTIVAS.
+        // El redondeo final va a la última obra para que la suma cierre exacto.
+        const parte = Math.round((totalNum / obrasActivasParaReparto.length) * 100) / 100;
+        const montos = obrasActivasParaReparto.map(() => parte);
+        const suma = montos.reduce((a, b) => a + b, 0);
+        montos[montos.length - 1] += Math.round((totalNum - suma) * 100) / 100;
+        imputaciones = obrasActivasParaReparto.map((o, i) => ({
+          obraId: o.id,
+          monto: montos[i],
+        }));
+      } else if (esPagoProveedor) {
         imputaciones = lineas
           .filter((l) => l.obraId && Number(l.monto) > 0)
           .map((l) => ({ obraId: l.obraId, monto: Number(l.monto) }));
@@ -333,20 +375,6 @@ export function NuevoEgresoDialog({
     const suma = redondeadas.reduce((a, b) => a + b, 0);
     redondeadas[redondeadas.length - 1] += Math.round((totalNum - suma) * 100) / 100;
     setLineas(lineas.map((l, i) => ({ ...l, monto: redondeadas[i].toFixed(2) })));
-  }
-
-  // "Gasto general": reemplaza las líneas por una por cada obra ACTIVA (estado
-  // = ACTIVA, no las pausadas/terminadas/en licitación — reunión 18/11), con
-  // el monto total repartido en partes iguales. Útil para gastos como IPF
-  // que afectan a toda la empresa, no a una obra en particular.
-  function repartirEnTodasLasObras() {
-    const obrasActivas = obras.filter((o) => o.estado === 'ACTIVA');
-    if (obrasActivas.length === 0 || totalNum <= 0) return;
-    const partes = totalNum / obrasActivas.length;
-    const redondeadas = obrasActivas.map(() => Math.round(partes * 100) / 100);
-    const suma = redondeadas.reduce((a, b) => a + b, 0);
-    redondeadas[redondeadas.length - 1] += Math.round((totalNum - suma) * 100) / 100;
-    setLineas(obrasActivas.map((o, i) => ({ obraId: o.id, monto: redondeadas[i].toFixed(2) })));
   }
 
   // Modo proveedor: lookup rápido obraId → saldoPendiente (del último resumen)
@@ -503,13 +531,14 @@ export function NuevoEgresoDialog({
                   options={[
                     { value: 'SERVICIO', label: 'Servicio', hint: 'EPEC, Rentas, Seguros, etc.' },
                     { value: 'PROVEEDOR', label: 'Proveedor', hint: 'Casa Santos, Prolectric…' },
-                    { value: 'GENERAL', label: 'General', hint: 'Sin categoría específica' },
+                    { value: 'GENERAL', label: 'General', hint: 'Reparte entre todas las obras activas' },
                   ]}
                   value={tipoEgreso}
                   onChange={(v) => {
                     setTipoEgreso(v as TipoEgreso | '');
                     setCategoriaId('');
                     setBeneficiarioId('');
+                    setVerDetalleImputacionGeneral(false);
                   }}
                   placeholder="Elegí tipo…"
                   searchPlaceholder="Buscar tipo…"
@@ -662,12 +691,58 @@ export function NuevoEgresoDialog({
             </div>
           )}
 
+          {/* Modo General automático: NO pedir imputación — se reparte solo entre
+              obras activas al guardar. Cartel compacto + link para ver/editar
+              el detalle si hace falta. Reunión Dani 26/11. */}
+          {modoGeneralAuto && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="text-sm">
+                  <div className="font-medium text-foreground">
+                    Reparto automático entre obras activas
+                  </div>
+                  <div className="text-[11px] text-muted">
+                    {obrasActivasParaReparto.length > 0
+                      ? `El monto se dividirá en partes iguales entre las ${obrasActivasParaReparto.length} obras activas.`
+                      : 'No hay obras activas — no se puede repartir. Activá al menos una en Obras.'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Al abrir el detalle, pre-llenar las líneas con el reparto
+                    // propuesto para que el usuario vea y pueda editar.
+                    if (obrasActivasParaReparto.length > 0 && totalNum > 0) {
+                      const parte = Math.round((totalNum / obrasActivasParaReparto.length) * 100) / 100;
+                      const montos = obrasActivasParaReparto.map(() => parte);
+                      const suma = montos.reduce((a, b) => a + b, 0);
+                      montos[montos.length - 1] += Math.round((totalNum - suma) * 100) / 100;
+                      setLineas(
+                        obrasActivasParaReparto.map((o, i) => ({
+                          obraId: o.id,
+                          monto: montos[i].toFixed(2),
+                        })),
+                      );
+                    }
+                    setVerDetalleImputacionGeneral(true);
+                  }}
+                  className="text-xs text-primary hover:underline shrink-0"
+                >
+                  Ver detalle de imputación
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Imputación a OBRAS — va arriba de categoría porque es más importante
               (define a qué obra se imputa el gasto). En modo "pago a
               proveedor" las obras del último resumen vienen pre-llenas con
               el saldo pendiente visible al lado; el usuario ingresa cuánto
-              paga a cada una (puede dejar menos, igual o más que el saldo). */}
-          {!modoVehiculos && (
+              paga a cada una (puede dejar menos, igual o más que el saldo).
+
+              Se oculta cuando es modo General automático (el usuario puede
+              desplegarlo tocando "Ver detalle de imputación" arriba). */}
+          {!modoVehiculos && !modoGeneralAuto && (
           <div className="space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <Label>Imputación a obra(s) *</Label>
@@ -683,16 +758,15 @@ export function NuevoEgresoDialog({
                     Saldar todo
                   </Button>
                 )}
-                {!esPagoProveedor && (
+                {tipoEgreso === 'GENERAL' && (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={repartirEnTodasLasObras}
-                    disabled={obras.length === 0 || totalNum <= 0}
-                    title="Reparte el monto en partes iguales entre todas las obras activas (ej: IPF, gasto general)"
+                    onClick={() => setVerDetalleImputacionGeneral(false)}
+                    title="Volver al reparto automático entre obras activas"
                   >
-                    Gasto general
+                    Volver a automático
                   </Button>
                 )}
                 {!esPagoProveedor && lineas.length > 1 && (
