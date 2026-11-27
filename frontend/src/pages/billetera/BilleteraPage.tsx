@@ -848,10 +848,19 @@ function MovimientoRow({
   selected: boolean;
   onToggleSelected: () => void;
 }) {
-  const obras =
-    m.imputaciones?.length
-      ? m.imputaciones.map((i) => i.obra.nombre).join(', ')
-      : null;
+  // Si el movimiento tiene 3 o más imputaciones, lo tratamos como "Gasto
+  // general" (reparto entre varias obras) — reunión Dani 26/11 v5. La lista
+  // completa sigue disponible en el tooltip y en el detalle del movimiento.
+  const cantImputaciones = m.imputaciones?.length ?? 0;
+  const esGastoGeneral = cantImputaciones >= 3;
+  const obras = cantImputaciones
+    ? esGastoGeneral
+      ? 'Gasto general'
+      : m.imputaciones!.map((i) => i.obra.nombre).join(', ')
+    : null;
+  const obrasTooltip = cantImputaciones
+    ? m.imputaciones!.map((i) => i.obra.nombre).join(', ')
+    : undefined;
   return (
     <TableRow
       onClick={onDetalle}
@@ -896,8 +905,18 @@ function MovimientoRow({
       </TableCell>
       <TableCell className="text-xs max-w-[180px]">
         {obras ? (
-          <span className="inline-block px-2 py-0.5 rounded bg-primary/10 text-primary font-medium truncate max-w-full">
+          <span
+            className={`inline-block px-2 py-0.5 rounded font-medium truncate max-w-full ${
+              esGastoGeneral
+                ? 'bg-accent/10 text-accent'
+                : 'bg-primary/10 text-primary'
+            }`}
+            title={esGastoGeneral ? `Repartido entre: ${obrasTooltip}` : obrasTooltip}
+          >
             {obras}
+            {esGastoGeneral && (
+              <span className="ml-1 opacity-60">({cantImputaciones})</span>
+            )}
           </span>
         ) : (
           <span className="text-muted">—</span>
