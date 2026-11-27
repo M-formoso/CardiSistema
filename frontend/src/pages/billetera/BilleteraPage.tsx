@@ -336,29 +336,29 @@ export function BilleteraPage() {
               {/* Fila 2: filtros alineados con cada columna (desktop).
                   En mobile se oculta y se usa el dialog "Filtros" de arriba. */}
               <TableRow className="hidden md:table-row [&_th]:sticky [&_th]:top-[37px] [&_th]:py-1.5 [&_th]:border-b [&_th]:border-border [&_th]:shadow-[0_1px_0_0_hsl(var(--border))]">
-                <TableHead className="pl-4 sm:pl-6 lg:pl-8">
+                <TableHead className="pl-4 sm:pl-6 lg:pl-8 min-w-[200px]">
                   <div className="flex flex-col gap-1">
-                    <label className="flex items-center gap-1.5">
-                      <span className="text-[9px] uppercase tracking-wider text-muted shrink-0 w-10">
+                    <label className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted shrink-0 w-10">
                         Desde
                       </span>
                       <Input
                         type="date"
                         value={desde}
                         onChange={(e) => setDesde(e.target.value)}
-                        className="h-7 w-[125px] text-[11px] px-1.5"
+                        className="h-7 w-[130px] text-[11px] px-1.5"
                         aria-label="Desde"
                       />
                     </label>
-                    <label className="flex items-center gap-1.5">
-                      <span className="text-[9px] uppercase tracking-wider text-muted shrink-0 w-10">
+                    <label className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted shrink-0 w-10">
                         Hasta
                       </span>
                       <Input
                         type="date"
                         value={hasta}
                         onChange={(e) => setHasta(e.target.value)}
-                        className="h-7 w-[125px] text-[11px] px-1.5"
+                        className="h-7 w-[130px] text-[11px] px-1.5"
                         aria-label="Hasta"
                       />
                     </label>
